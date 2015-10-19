@@ -76,7 +76,7 @@ func main() {
 
 	adapters.MongoDB = session.DB("dock-db")
 
-	actors.RootActor = actors.CreateActor("/", nil)
+	actors.RootActor = actors.CreateActor("/", 0, nil)
 	go actors.RootActor.Run()
 
 	http.HandleFunc("/", handler)

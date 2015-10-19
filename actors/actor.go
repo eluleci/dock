@@ -10,6 +10,8 @@ import (
 
 type Actor struct {
 	res               string
+	level             int
+	actorType      	  string
 	class             string
 	model             map[string]interface{}
 	children          map[string]Actor
@@ -18,9 +20,19 @@ type Actor struct {
 	adapter           *adapters.MongoAdapter
 }
 
-func CreateActor(res string, parentInbox chan messages.RequestWrapper) (h Actor) {
-	class := res[strings.Index(res, "/")+1:]
+func CreateActor(res string, level int, parentInbox chan messages.RequestWrapper) (h Actor) {
+	class := RetrieveClassName(res, level)
+
+	if level == 0 {
+		h.actorType = "root"
+	} else if level == 1 {
+		h.actorType = "resource"
+	} else if level == 2 {
+		h.actorType = "object"
+	}
+
 	h.res = res
+	h.level = level
 	h.class = class
 	h.children = make(map[string]Actor)
 	h.Inbox = make(chan messages.RequestWrapper)
@@ -30,12 +42,26 @@ func CreateActor(res string, parentInbox chan messages.RequestWrapper) (h Actor)
 	return
 }
 
+func RetrieveClassName(res string, level int) (string) {
+	if level == 0 {
+		return ""
+	} else if level == 1 {
+		return res[1:]
+	} else if level == 2 {
+		return res[1:strings.LastIndex(res, "/")]
+	} else {
+		return ""
+	}
+
+	// TODO: return class names of more complicated resources like: /Post/123/Author (return User)
+}
+
 func (h *Actor) Run() {
 	defer func() {
 		utils.Log("debug", h.res+":  Stopped running.")
 	}()
 
-	utils.Log("debug", h.res+":  Started running.")
+	utils.Log("debug", h.res + ":  Started running as class " + h.class)
 
 	for {
 		select {
@@ -47,161 +73,36 @@ func (h *Actor) Run() {
 			if requestWrapper.Res == h.res {
 				// if the resource of the message is this hub's resource
 
+				var response messages.Message
+				var err error
+
 				if strings.EqualFold(requestWrapper.Message.Command, "get") {
-					h.checkAndSend(requestWrapper.Listener, requestWrapper.Message)
 
-				} else if strings.EqualFold(requestWrapper.Message.Command, "post") {
-					responseBody, err := h.adapter.HandlePost(requestWrapper)
-
-					var answer messages.Message
-					answer.Body = responseBody
-
-					if (err != nil) {
-						answer.Status = 500
+					if strings.EqualFold(h.actorType, "object") {
+						response.Body, err = h.adapter.HandleGetById(requestWrapper)
+					} else {
+						// TODO handle queries
 					}
-					h.checkAndSend(requestWrapper.Listener, answer)
+				} else if strings.EqualFold(requestWrapper.Message.Command, "post") {
 
-				} else if strings.EqualFold(requestWrapper.Message.Command, "delete") {
-					h.checkAndSend(requestWrapper.Listener, requestWrapper.Message)
-
+					if strings.EqualFold(h.actorType, "resource") {
+						response.Body, err = h.adapter.HandlePost(requestWrapper)
+					} else if strings.EqualFold(h.actorType, "object") {
+						response.Status = 400	// post on objects are not allowed
+					}
 				} else if strings.EqualFold(requestWrapper.Message.Command, "put") {
-					h.checkAndSend(requestWrapper.Listener, requestWrapper.Message)
 
+					if strings.EqualFold(h.actorType, "resource") {
+						response.Status = 400	// put on resources are not allowed
+					} else if strings.EqualFold(h.actorType, "object") {
+						response.Body, err = h.adapter.HandlePut(requestWrapper)
+					}
 				}
 
-				// if there is a subscription channel inside the request, subscribe the request sender
-				// we need to subscribe the channel before we continue because there may be children hub creation
-				// afterwords and we need to give all subscriptions of this hub to it's children
-				//				h.addSubscription(requestWrapper)
-
-				/*if strings.EqualFold(requestWrapper.Message.Command, "get") {
-
-					if config.SystemConfig.PersistItemInMemory && h.model != nil {
-						// if persisting in memory and if the model exists, it means we already fetched data before.
-						// so return the model to listener
-
-						response := createResponse(requestWrapper.Message.Rid, h.res, 200, h.model, "")
-						h.checkAndSend(requestWrapper.Listener, response)
-
-					} else if config.SystemConfig.PersistListInMemory && len(h.children) > 0 {
-						// if persisting lists in memory and if there are children hubs, it means we have the data
-						// already. so directly collect the item data from hubs and return it back
-						h.returnChildListToRequest(requestWrapper)
-
-					} else if h.adapter != nil {
-						// if there is no model, and if there is adapter, get the
-						// data from the adapter first.
-						h.executeGetOnAdapter(requestWrapper)
-
-					} else {
-						response := createResponse(requestWrapper.Message.Rid, h.res, 501, nil, "No adapter is set for ThunderDock Server.")
-						h.checkAndSend(requestWrapper.Listener, response)
-					}
-
-				} else if strings.EqualFold(requestWrapper.Message.Command, "put") {
-
-					if h.adapter != nil {
-						// if there is adapter, execute the request from adapter directly
-						h.executePutOnAdapter(requestWrapper)
-					} else {
-						response := createResponse(requestWrapper.Message.Rid, h.res, 501, nil, "No adapter is set for ThunderDock Server.")
-						h.checkAndSend(requestWrapper.Listener, response)
-					}
-
-				}  else if strings.EqualFold(requestWrapper.Message.Command, "post") {
-
-					if h.adapter != nil {
-						// it is an object creation message under this domain
-						h.executePostOnAdapter(requestWrapper)
-					} else {
-						response := createResponse(requestWrapper.Message.Rid, h.res, 501, nil, "No adapter is set for ThunderDock Server.")
-						h.checkAndSend(requestWrapper.Listener, response)
-					}
-
-				}  else if strings.EqualFold(requestWrapper.Message.Command, "delete") {
-
-					if h.adapter != nil {
-						// it is an object deletion message under this domain
-						if h.executeDeleteOnAdapter(requestWrapper) {
-
-							// removing all subscribers and notifying them that they are removed from subscriptions
-							for listenerChannel, _ := range h.subscribers {
-								h.removeSubscription(listenerChannel, true)
-							}
-
-							// if deletion is successful, break the loop (destroy self)
-							break
-						}
-					} else {
-						response := createResponse(requestWrapper.Message.Rid, h.res, 501, nil, "No adapter is set for ThunderDock Server.")
-						h.checkAndSend(requestWrapper.Listener, response)
-					}
-
-				} else if strings.EqualFold(requestWrapper.Message.Command, "::subscribe") {
-
-					h.addSubscription(requestWrapper)
-
-					response := createResponse(requestWrapper.Message.Rid, h.res, 200, nil, "")
-					h.checkAndSend(requestWrapper.Listener, response)
-
-				} else if strings.EqualFold(requestWrapper.Message.Command, "::unsubscribe") {
-					// removing listener from subscriptions, no need to notify the listener that it is un-subscribed
-					h.removeSubscription(requestWrapper.Listener, false)
-
-					response := createResponse(requestWrapper.Message.Rid, h.res, 200, nil, "")
-					h.checkAndSend(requestWrapper.Listener, response)
-
-					if h.checkAndDestroy() {
-						// if checkAndDestroy returns true, it means we're destroying. so break the for loop to destroy
-						break
-					}
-
-				} else if strings.EqualFold(requestWrapper.Message.Command, "::deleteChild") {
-					// this is a message from child hub for its' deletion. when a parent hub receives this message, it
-					// means that the child hub is deleted explicitly.
-
-					childRes := requestWrapper.Message.Body["::res"].(string)
-					if _, exists := h.children[childRes]; exists {
-
-						// send broadcast message of the object deletion
-						requestWrapper.Message.Command = "delete"
-						requestWrapper.Message.Res = h.res
-						//						go func() {
-						//							h.broadcast <- requestWrapper
-						//						}()
-						h.broadcastMessage(requestWrapper)
-
-						// delete the child hub
-						delete(h.children, childRes)
-						util.Log("debug", h.res+": Deleted child "+string(childRes))
-
-						if h.checkAndDestroy() {
-							// if checkAndDestroy returns true, it means we're destroying. so break the for loop to destroy
-							break
-						}
-					}
-				} else if strings.EqualFold(requestWrapper.Message.Command, "::destroyChild") {
-
-					childRes := requestWrapper.Message.Body["::res"].(string)
-					if _, exists := h.children[childRes]; exists {
-
-						// delete the child hub
-						delete(h.children, childRes)
-						util.Log("debug", h.res+": Destroyed child "+string(childRes))
-
-						if h.checkAndDestroy() {
-							// if checkAndDestroy returns true, it means we're destroying. so break the for loop to destroy
-							break
-						}
-					}
-				} else {
-					var answer message.Message
-					answer.Rid = requestWrapper.Message.Rid
-					answer.Res = h.res
-					answer.Status = 500
-					answer.Body = h.model
-					h.checkAndSend(requestWrapper.Listener, answer)
-				}*/
+				if err != nil && response.Status != 0 {
+					response.Status = 500
+				}
+				h.checkAndSend(requestWrapper.Listener, response)
 
 			} else {
 				// if the resource belongs to a children hub
@@ -210,7 +111,7 @@ func (h *Actor) Run() {
 				hub, exists := h.children[childRes]
 				if !exists {
 					//   if children doesn't exists, create children hub for the res
-					hub = CreateActor(childRes, h.Inbox)
+					hub = CreateActor(childRes, h.level + 1, h.Inbox)
 					go hub.Run()
 					h.children[childRes] = hub
 				}
