@@ -6,6 +6,14 @@ import (
 	"github.com/eluleci/dock/adapters"
 	"encoding/json"
 	"strings"
+	"net/http"
+	"fmt"
+)
+
+const (
+	ActorTypeRoot = "root"
+	ActorTypeResource = "resource"
+	ActorTypeObject = "object"
 )
 
 type Actor struct {
@@ -24,11 +32,11 @@ func CreateActor(res string, level int, parentInbox chan messages.RequestWrapper
 	class := RetrieveClassName(res, level)
 
 	if level == 0 {
-		h.actorType = "root"
+		h.actorType = ActorTypeRoot
 	} else if level == 1 {
-		h.actorType = "resource"
+		h.actorType = ActorTypeResource
 	} else if level == 2 {
-		h.actorType = "object"
+		h.actorType = ActorTypeObject
 	}
 
 	h.res = res
@@ -78,29 +86,39 @@ func (h *Actor) Run() {
 
 				if strings.EqualFold(requestWrapper.Message.Command, "get") {
 
-					if strings.EqualFold(h.actorType, "object") {
+					if strings.EqualFold(h.actorType, ActorTypeObject) {
 						response.Body, err = h.adapter.HandleGetById(requestWrapper)
-					} else {
-						// TODO handle queries
+						fmt.Print(response.Body)
+					} else if strings.EqualFold(h.actorType, ActorTypeResource) {
+						response.Body, err = h.adapter.HandleGet(requestWrapper)
 					}
 				} else if strings.EqualFold(requestWrapper.Message.Command, "post") {
 
-					if strings.EqualFold(h.actorType, "resource") {
+					if strings.EqualFold(h.actorType, ActorTypeResource) {
 						response.Body, err = h.adapter.HandlePost(requestWrapper)
-					} else if strings.EqualFold(h.actorType, "object") {
-						response.Status = 400	// post on objects are not allowed
+						response.Status = http.StatusCreated
+					} else if strings.EqualFold(h.actorType, ActorTypeObject) {
+						response.Status = http.StatusBadRequest	// post on objects are not allowed
 					}
 				} else if strings.EqualFold(requestWrapper.Message.Command, "put") {
 
-					if strings.EqualFold(h.actorType, "resource") {
-						response.Status = 400	// put on resources are not allowed
-					} else if strings.EqualFold(h.actorType, "object") {
+					if strings.EqualFold(h.actorType, ActorTypeResource) {
+						response.Status = http.StatusBadRequest	// put on resources are not allowed
+					} else if strings.EqualFold(h.actorType, ActorTypeObject) {
 						response.Body, err = h.adapter.HandlePut(requestWrapper)
+					}
+				} else if strings.EqualFold(requestWrapper.Message.Command, "delete") {
+
+					if strings.EqualFold(h.actorType, ActorTypeResource) {
+						response.Status = http.StatusBadRequest	// delete on resources are not allowed
+					} else if strings.EqualFold(h.actorType, ActorTypeObject) {
+						response.Body, err = h.adapter.HandleDelete(requestWrapper)
+						response.Status = http.StatusNoContent
 					}
 				}
 
-				if err != nil && response.Status != 0 {
-					response.Status = 500
+				if err != nil && response.Status == 0 {
+					response.Status = (err.(*utils.Error)).Code
 				}
 				h.checkAndSend(requestWrapper.Listener, response)
 

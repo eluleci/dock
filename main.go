@@ -8,13 +8,13 @@ import (
 	"github.com/eluleci/dock/utils"
 	"github.com/eluleci/dock/messages"
 	"gopkg.in/mgo.v2"
-//	"gopkg.in/mgo.v2/bson"
 	"encoding/json"
 	"io/ioutil"
 	"strings"
+	//	"fmt"
+	//	"log"
 	"io"
 //	"fmt"
-//	"log"
 )
 
 func handler(w http.ResponseWriter, r *http.Request) {
@@ -25,6 +25,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	//	vars := mux.Vars(r)
 	//	res := vars["res"]
 	res := r.URL.Path
+//	fmt.Printf("info", r.URL.Query())
 
 	if (strings.Contains(res, ".ico")) {
 		utils.Log("info", "File request.")
@@ -37,13 +38,13 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	requestWrapper.Message.Res = res
 	requestWrapper.Message.Command = r.Method
 	requestWrapper.Message.Headers = r.Header
+	requestWrapper.Message.Parameters = r.URL.Query()
 	rBody, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
 	json.Unmarshal(rBody, &requestWrapper.Message.Body)
 
-	bytes, err := json.Marshal(requestWrapper.Message)
-	if err != nil {
-		http.Error(w, "Internal server error", 500)
-	}
 	utils.Log("info", "HTTP: Received request: "+r.Method)
 
 	responseChannel := make(chan messages.Message)
@@ -52,14 +53,18 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	actors.RootActor.Inbox <- requestWrapper
 
 	response := <-responseChannel
-	response.Status = 0    // there is no need to status in http response
-	bytes, err = json.Marshal(response)
-	if err != nil {
-		http.Error(w, "Internal server error", 500)
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	if response.Status != 0 {
+		w.WriteHeader(response.Status)
 	}
 
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	io.WriteString(w, string(bytes))
+	if response.Body != nil {
+		bytes, err2 := json.Marshal(response.Body)
+		if err2 != nil {
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
+		io.WriteString(w, string(bytes))
+	}
 
 	//	elapsed := time.Since(start)
 	//	util.Log("info", "HTTP: Response sent in "+elapsed.String())
