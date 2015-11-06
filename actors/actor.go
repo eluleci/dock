@@ -113,7 +113,9 @@ func (h *Actor) Run() {
 						response.Status = http.StatusBadRequest	// delete on resources are not allowed
 					} else if strings.EqualFold(h.actorType, ActorTypeObject) {
 						response.Body, err = h.adapter.HandleDelete(requestWrapper)
-						response.Status = http.StatusNoContent
+						if err == nil {
+							response.Status = http.StatusNoContent
+						}
 					}
 				}
 

@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 	//	"github.com/gorilla/mux"
+	"github.com/eluleci/dock/config"
 	"github.com/eluleci/dock/actors"
 	"github.com/eluleci/dock/adapters"
 	"github.com/eluleci/dock/utils"
@@ -11,39 +12,25 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"strings"
-	//	"fmt"
+//		"fmt"
 	//	"log"
 	"io"
-//	"fmt"
+	"os"
 )
 
 func handler(w http.ResponseWriter, r *http.Request) {
 
-	// used for calculating time
-	//	start := time.Now()
-
-	//	vars := mux.Vars(r)
-	//	res := vars["res"]
 	res := r.URL.Path
-//	fmt.Printf("info", r.URL.Query())
-
 	if (strings.Contains(res, ".ico")) {
 		utils.Log("info", "File request.")
 		// TODO: handle file requests
 		return
 	}
 
-	var requestWrapper messages.RequestWrapper
-	requestWrapper.Res = res
-	requestWrapper.Message.Res = res
-	requestWrapper.Message.Command = r.Method
-	requestWrapper.Message.Headers = r.Header
-	requestWrapper.Message.Parameters = r.URL.Query()
-	rBody, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	requestWrapper, parseReqErr := parseRequest(r)
+	if parseReqErr != nil {
+		http.Error(w, parseReqErr.Message, parseReqErr.Code)
 	}
-	json.Unmarshal(rBody, &requestWrapper.Message.Body)
 
 	utils.Log("info", "HTTP: Received request: "+r.Method)
 
@@ -73,17 +60,82 @@ func handler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	session, err := mgo.Dial("localhost")
-	if err != nil {
-		panic(err)
+
+	// reading and parsing configuration
+	config, configErr := readConfig()
+	if configErr != nil {
+		utils.Log("fatal", configErr.Message)
+		os.Exit(configErr.Code)
 	}
-	defer session.Close()
 
-	adapters.MongoDB = session.DB("dock-db")
+	// creating database instance
+	var dbErr *utils.Error
+	adapters.MongoDB, dbErr = connectToDB(config)
+	if dbErr != nil {
+		utils.Log("fatal", dbErr.Message)
+		os.Exit(dbErr.Code)
+	}
 
+	// creating root actor
 	actors.RootActor = actors.CreateActor("/", 0, nil)
 	go actors.RootActor.Run()
 
 	http.HandleFunc("/", handler)
 	http.ListenAndServe(":8080", nil)
+}
+
+func readConfig() (configuration config.Config, err *utils.Error) {
+
+	configInBytes, configErr := ioutil.ReadFile("dock-config.json")
+	if configErr == nil {
+		configParseErr := json.Unmarshal(configInBytes, &configuration)
+		if configParseErr != nil {
+			err = &utils.Error{http.StatusInternalServerError, "Parsing dock-config.json failed."};
+			return
+		}
+	} else {
+		err = &utils.Error{http.StatusInternalServerError, "No 'dock-config.json' file found."};
+		return
+	}
+	return
+}
+
+func connectToDB(config config.Config) (db *mgo.Database, err *utils.Error) {
+
+	address, hasAddress := config.Mongo["address"]
+	name, hasName := config.Mongo["name"]
+	if  !hasAddress || !hasName {
+		err = &utils.Error{http.StatusInternalServerError, "Database 'address' and 'name' must be specified in dock-config.json."};
+		return
+	}
+
+	session, mongoerr := mgo.Dial(address)
+	if mongoerr != nil {
+		err = &utils.Error{http.StatusInternalServerError, "Database connection failed."};
+		return
+	}
+
+	// TODO: find a proper way to close the session
+	// defer session.Close()
+
+	db = session.DB(name)
+	return
+}
+
+func parseRequest(r *http.Request) (requestWrapper messages.RequestWrapper, err *utils.Error) {
+
+	res := r.URL.Path
+	requestWrapper.Res = res
+	requestWrapper.Message.Res = res
+	requestWrapper.Message.Command = r.Method
+	requestWrapper.Message.Headers = r.Header
+	requestWrapper.Message.Parameters = r.URL.Query()
+
+	rBody, readErr := ioutil.ReadAll(r.Body)
+	if readErr != nil {
+		readErr = &utils.Error{http.StatusInternalServerError, "Parsing request body failed."};
+	}
+	json.Unmarshal(rBody, &requestWrapper.Message.Body)
+
+	return
 }

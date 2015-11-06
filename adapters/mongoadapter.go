@@ -32,6 +32,7 @@ func (m *MongoAdapter) HandlePost(requestWrapper messages.RequestWrapper) (respo
 	err = m.Collection.Insert(message.Body)
 	if err != nil {
 		err = &utils.Error{http.StatusInternalServerError, "Inserting item failed."};
+		response["message"] = "Database request failed."
 		return
 	}
 
@@ -52,6 +53,7 @@ func (m *MongoAdapter) HandleGetById(requestWrapper messages.RequestWrapper) (re
 	if err != nil {
 		utils.Log("fatal", "Getting item with id failed")
 		err = &utils.Error{http.StatusNotFound, "Item not found."};
+		response = nil
 		return
 	}
 	return
@@ -65,13 +67,16 @@ func (m *MongoAdapter) HandleGet(requestWrapper messages.RequestWrapper) (respon
 
 	var results []map[string]interface {}
 
-	var whereParams map[string]interface {}
-	json.Unmarshal([]byte(message.Parameters["where"][0]), &whereParams)
+	var whereParams map[string]interface{}
+	if message.Parameters["where"] != nil {
+		json.Unmarshal([]byte(message.Parameters["where"][0]), &whereParams)
+	}
 
 	err = m.Collection.Find(whereParams).All(&results)
 	if err != nil {
 		utils.Log("fatal", "Querying items failed")
 		err = &utils.Error{http.StatusInternalServerError, "Querying items failed."};
+		response["message"] = "Database request failed."
 		return
 	}
 
@@ -105,7 +110,8 @@ func (m *MongoAdapter) HandlePut(requestWrapper messages.RequestWrapper) (respon
 	err = m.Collection.UpdateId(bson.ObjectIdHex(id), objectToUpdate)
 	if err != nil {
 		utils.Log("fatal", "Updating item failed")
-		err = &utils.Error{http.StatusNotFound, "Item not found."};
+		err = &utils.Error{http.StatusInternalServerError, "Database request failed."};
+		response["message"] = "Database request failed."
 		return
 	}
 
