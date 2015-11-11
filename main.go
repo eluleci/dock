@@ -2,13 +2,14 @@ package main
 
 import (
 	"net/http"
+//	"gopkg.in/mgo.v2"
+	"gopkg.in/mgo.v2"
 	//	"github.com/gorilla/mux"
 	"github.com/eluleci/dock/config"
 	"github.com/eluleci/dock/actors"
 	"github.com/eluleci/dock/adapters"
 	"github.com/eluleci/dock/utils"
 	"github.com/eluleci/dock/messages"
-	"gopkg.in/mgo.v2"
 	"encoding/json"
 	"io/ioutil"
 	"strings"
@@ -53,8 +54,6 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		io.WriteString(w, string(bytes))
 	}
 
-	//	elapsed := time.Since(start)
-	//	util.Log("info", "HTTP: Response sent in "+elapsed.String())
 
 	close(responseChannel)
 }

@@ -1,35 +1,46 @@
 package actors
 
 import (
+	"golang.org/x/crypto/bcrypt"
 	"github.com/eluleci/dock/utils"
 	"github.com/eluleci/dock/messages"
 	"github.com/eluleci/dock/adapters"
 	"encoding/json"
 	"strings"
 	"net/http"
+//	"fmt"
+//	"os/user"
 	"fmt"
 )
 
 const (
-	ActorTypeRoot = "root"
+	ActorTypeRoot     = "root"
 	ActorTypeResource = "resource"
-	ActorTypeObject = "object"
+	ActorTypeObject   = "object"
+	ResourceTypeUsers = "/users"
+	ClassUsers        = "users"
+	ResourceRegister  = "/register"
+	ResourceLogin     = "/login"
 )
 
 type Actor struct {
-	res               string
-	level             int
-	actorType      	  string
-	class             string
+	res                string
+	level              int
+	actorType          string
+	class              string
 	model             map[string]interface{}
 	children          map[string]Actor
-	Inbox             chan messages.RequestWrapper
-	parentInbox       chan messages.RequestWrapper
+	Inbox              chan messages.RequestWrapper
+	parentInbox        chan messages.RequestWrapper
 	adapter           *adapters.MongoAdapter
 }
 
 func CreateActor(res string, level int, parentInbox chan messages.RequestWrapper) (h Actor) {
 	class := RetrieveClassName(res, level)
+
+	if strings.EqualFold(res, ResourceLogin) || strings.EqualFold(res, ResourceRegister) {
+		class = ClassUsers
+	}
 
 	if level == 0 {
 		h.actorType = ActorTypeRoot
@@ -69,7 +80,7 @@ func (h *Actor) Run() {
 		utils.Log("debug", h.res+":  Stopped running.")
 	}()
 
-	utils.Log("debug", h.res + ":  Started running as class " + h.class)
+	utils.Log("debug", h.res+":  Started running as class "+h.class)
 
 	for {
 		select {
@@ -86,31 +97,49 @@ func (h *Actor) Run() {
 
 				if strings.EqualFold(requestWrapper.Message.Command, "get") {
 
-					if strings.EqualFold(h.actorType, ActorTypeObject) {
+					if strings.EqualFold(h.res, ResourceLogin) {					// login request
+						response, err = h.handleLogin(requestWrapper)
+					} else if strings.EqualFold(h.actorType, ActorTypeObject) {
 						response.Body, err = h.adapter.HandleGetById(requestWrapper)
-						fmt.Print(response.Body)
+
+						// delete the password field if the object type is user
+						if strings.EqualFold(h.class, ClassUsers) {
+							delete(response.Body, "password")
+						}
 					} else if strings.EqualFold(h.actorType, ActorTypeResource) {
 						response.Body, err = h.adapter.HandleGet(requestWrapper)
+
+						// delete the password field if the object type is user
+						if strings.EqualFold(h.res, ResourceTypeUsers) {
+							users := response.Body["data"]
+							for _, user := range users.([]map[string]interface {}) {
+								delete(user, "password")
+							}
+						}
 					}
 				} else if strings.EqualFold(requestWrapper.Message.Command, "post") {
 
-					if strings.EqualFold(h.actorType, ActorTypeResource) {
+					if strings.EqualFold(h.res, ResourceTypeUsers) {				// post on users not allowed
+						response.Status = http.StatusMethodNotAllowed
+					} else if strings.EqualFold(h.res, ResourceRegister) {			// sign up request
+						response, err = h.handleSignUp(requestWrapper)
+					} else if strings.EqualFold(h.actorType, ActorTypeResource) {	// create object request
 						response.Body, err = h.adapter.HandlePost(requestWrapper)
 						response.Status = http.StatusCreated
-					} else if strings.EqualFold(h.actorType, ActorTypeObject) {
-						response.Status = http.StatusBadRequest	// post on objects are not allowed
+					} else if strings.EqualFold(h.actorType, ActorTypeObject) {		// post on objects are not allowed
+						response.Status = http.StatusBadRequest
 					}
 				} else if strings.EqualFold(requestWrapper.Message.Command, "put") {
 
 					if strings.EqualFold(h.actorType, ActorTypeResource) {
-						response.Status = http.StatusBadRequest	// put on resources are not allowed
+						response.Status = http.StatusBadRequest    // put on resources are not allowed
 					} else if strings.EqualFold(h.actorType, ActorTypeObject) {
 						response.Body, err = h.adapter.HandlePut(requestWrapper)
 					}
 				} else if strings.EqualFold(requestWrapper.Message.Command, "delete") {
 
 					if strings.EqualFold(h.actorType, ActorTypeResource) {
-						response.Status = http.StatusBadRequest	// delete on resources are not allowed
+						response.Status = http.StatusBadRequest    // delete on resources are not allowed
 					} else if strings.EqualFold(h.actorType, ActorTypeObject) {
 						response.Body, err = h.adapter.HandleDelete(requestWrapper)
 						if err == nil {
@@ -131,7 +160,7 @@ func (h *Actor) Run() {
 				hub, exists := h.children[childRes]
 				if !exists {
 					//   if children doesn't exists, create children hub for the res
-					hub = CreateActor(childRes, h.level + 1, h.Inbox)
+					hub = CreateActor(childRes, h.level+1, h.Inbox)
 					go hub.Run()
 					h.children[childRes] = hub
 				}
@@ -150,6 +179,113 @@ func (h *Actor) checkAndSend(c chan messages.Message, m messages.Message) {
 		}
 	}()
 	c <- m
+}
+
+func (h *Actor) handleSignUp(requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
+	usernameArray, hasUsername := requestWrapper.Message.Body["username"]
+	emailArray, hasEmail := requestWrapper.Message.Body["email"]
+	password, hasPassword := requestWrapper.Message.Body["password"]
+
+	var username, email string
+	if hasUsername {
+		username = usernameArray.(string)
+	}
+	if hasEmail {
+		email = emailArray.(string)
+	}
+	accountData := h.getAccountData(requestWrapper, username, email)
+
+	if accountData != nil {
+		response.Status = http.StatusConflict
+		return
+	}
+
+	if (hasEmail || hasUsername) && hasPassword {
+		hashedPassword, hashErr := bcrypt.GenerateFromPassword([]byte(password.(string)), bcrypt.DefaultCost)
+		if hashErr != nil {
+			err = hashErr
+			return
+		}
+		requestWrapper.Message.Body["password"] = string(hashedPassword)
+		response.Body, err = h.adapter.HandlePost(requestWrapper)
+		response.Status = http.StatusCreated
+	} else {
+		response.Status = http.StatusBadRequest
+	}
+	// TODO generate Access Token
+	return
+}
+
+func (h *Actor) handleLogin(requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
+
+	emailArray, hasEmail := requestWrapper.Message.Parameters["email"]
+	usernameArray, hasUsername := requestWrapper.Message.Parameters["username"]
+	passwordArray, hasPassword := requestWrapper.Message.Parameters["password"]
+
+	if (hasEmail || hasUsername) && hasPassword {
+		password := passwordArray[0]
+
+		var username, email string
+		if len(usernameArray) > 0 {
+			username = usernameArray[0]
+		}
+		if len(emailArray) > 0 {
+			email = emailArray[0]
+		}
+
+		accountData := h.getAccountData(requestWrapper ,username, email)
+		existingPassword := accountData["password"].(string)
+
+		passwordError := bcrypt.CompareHashAndPassword([]byte(existingPassword), []byte(password))
+		if passwordError == nil {
+			delete(accountData, "password")
+			response.Body = accountData
+			response.Status = http.StatusOK
+		} else {
+			response.Status = http.StatusForbidden
+		}
+	} else {
+		response.Status = http.StatusBadRequest
+	}
+	// TODO generate Access Token
+	return
+}
+
+func (h *Actor) getAccountData(requestWrapper messages.RequestWrapper, username, email string) (accountData map[string]interface {}) {
+
+	var whereParams = make(map[string]interface {})
+	if username != "" {
+		paramUsername := make(map[string]string)
+		paramUsername["$eq"] = username
+		whereParams["username"] = paramUsername
+	}
+	if email != "" {
+		paramEmail := make(map[string]string)
+		paramEmail["$eq"] = email
+		whereParams["email"] = paramEmail
+	}
+	whereParamsJson, err := json.Marshal(whereParams)
+	if err != nil {
+		fmt.Println(1)
+		return
+	}
+
+	requestWrapper.Message.Parameters["where"] = []string{string(whereParamsJson)}
+	if err != nil {
+		fmt.Println(2)
+		return
+	}
+
+	results, fetchErr := h.adapter.HandleGet(requestWrapper)
+	resultsAsMap := results["data"].([]map[string]interface {})
+	if fetchErr != nil || len(resultsAsMap) == 0 {
+		fmt.Println(3)
+		return
+	}
+	accountData = resultsAsMap[0]
+
+	fmt.Println(4)
+	return
 }
 
 func getChildRes(res, parentRes string) (fullPath string) {

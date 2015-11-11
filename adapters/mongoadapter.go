@@ -9,6 +9,7 @@ import (
 	"time"
 	"strings"
 	"net/http"
+//	"fmt"
 )
 
 type MongoAdapter struct {
