@@ -129,12 +129,23 @@ func (a *Actor) handleRequest(requestWrapper messages.RequestWrapper) (response 
 			err = &utils.Error{http.StatusUnauthorized, "Unauthorized"}
 		}
 	} else if strings.EqualFold(requestWrapper.Message.Command, "post") {
-		response, err = a.handlePost(requestWrapper)
-		fmt.Println(err)
+		if permissions["create"] {
+			response, err = a.handlePost(requestWrapper)
+		} else {
+			err = &utils.Error{http.StatusUnauthorized, "Unauthorized"}
+		}
 	} else if strings.EqualFold(requestWrapper.Message.Command, "put") {
-		response, err = a.handlePut(requestWrapper)
+		if permissions["update"] {
+			response, err = a.handlePut(requestWrapper)
+		} else {
+			err = &utils.Error{http.StatusUnauthorized, "Unauthorized"}
+		}
 	} else if strings.EqualFold(requestWrapper.Message.Command, "delete") {
-		response, err = a.handleDelete(requestWrapper)
+		if permissions["delete"] {
+			response, err = a.handleDelete(requestWrapper)
+		} else {
+			err = &utils.Error{http.StatusUnauthorized, "Unauthorized"}
+		}
 	}
 	return
 }

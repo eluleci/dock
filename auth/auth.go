@@ -140,6 +140,7 @@ func GetPermissions(requestWrapper messages.RequestWrapper, dbAdapter *adapters.
 }
 
 func getRolesOfUser(requestWrapper messages.RequestWrapper) (roles []string, err utils.Error) {
+	// TODO get roles recursively. (inherited roles)
 
 	dbAdapter := &adapters.MongoAdapter{adapters.MongoDB.C("users")}
 	userDataFromToken, tokenErr := extractUserFromRequest(requestWrapper)
