@@ -6,6 +6,10 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"github.com/eluleci/dock/adapters"
 	"encoding/json"
+	"time"
+	"github.com/dgrijalva/jwt-go"
+	"gopkg.in/mgo.v2/bson"
+	"github.com/eluleci/dock/utils"
 )
 
 func HandleSignUp(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (response messages.Message, err error) {
@@ -68,14 +72,40 @@ func HandleLogin(requestWrapper messages.RequestWrapper, dbAdapter *adapters.Mon
 		if passwordError == nil {
 			delete(accountData, "password")
 			response.Body = accountData
-			response.Status = http.StatusOK
+
+			accessToken, tokenErr := generateToken(accountData["_id"].(bson.ObjectId), username, email)
+			if tokenErr == nil {
+				response.Body["accessToken"] = accessToken
+				response.Status = http.StatusOK
+			} else {
+				response.Status = http.StatusInternalServerError
+			}
 		} else {
 			response.Status = http.StatusForbidden
 		}
 	} else {
 		response.Status = http.StatusBadRequest
 	}
-	// TODO generate Access Token
+	return
+}
+
+
+func VerifyToken(tokenString string) (userData map[string]interface{}, err error) {
+
+	token, err := jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
+		return []byte("SIGN_IN_KEY"), nil
+	})
+
+	if err != nil {
+		err = &utils.Error{http.StatusInternalServerError, "Parsing token failed"}
+	}
+
+	if !token.Valid {
+		err = &utils.Error{http.StatusUnauthorized, "Token is not valid"}
+	}
+
+	userData = token.Claims["user"].(map[string]interface{})
+
 	return
 }
 
@@ -109,5 +139,22 @@ func getAccountData(requestWrapper messages.RequestWrapper, dbAdapter *adapters.
 	}
 	accountData = resultsAsMap[0]
 
+	return
+}
+
+func generateToken(userId bson.ObjectId, username, email string) (tokenString string, err error) {
+
+	token := jwt.New(jwt.SigningMethodHS256)
+
+	token.Claims["ver"] = "0.1"
+	token.Claims["exp"] = time.Now().Add(time.Hour * 72).Unix()
+
+	userData := make(map[string]interface{})
+	userData["userId"] = userId
+	userData["username"] = username
+	userData["email"] = email
+	token.Claims["user"] = userData
+
+	tokenString, err = token.SignedString([]byte("SIGN_IN_KEY"))
 	return
 }

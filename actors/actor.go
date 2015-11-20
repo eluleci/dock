@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"strings"
 	"net/http"
+	"fmt"
 )
 
 const (
@@ -91,6 +92,14 @@ func (a *Actor) Run() {
 
 				var response messages.Message
 				var err error
+
+				authHeaders := requestWrapper.Message.Headers["Authorization"]
+				if authHeaders!= nil && len(authHeaders) > 0 {
+					accessToken := authHeaders[0]
+					userData, tokenErr := auth.VerifyToken(accessToken)
+					fmt.Println(userData)
+					fmt.Println(tokenErr)
+				}
 
 				if strings.EqualFold(requestWrapper.Message.Command, "get") {
 
