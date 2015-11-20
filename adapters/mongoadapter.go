@@ -52,7 +52,7 @@ func (m *MongoAdapter) HandleGetById(requestWrapper messages.RequestWrapper) (re
 
 	err = m.Collection.FindId(bson.ObjectIdHex(id)).One(&response)
 	if err != nil {
-		utils.Log("fatal", "Getting item with id failed")
+		utils.Log("fatal", "mongoadapter: Getting item with id failed: " + message.Res)
 		err = &utils.Error{http.StatusNotFound, "Item not found."};
 		response = nil
 		return

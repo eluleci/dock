@@ -15,8 +15,8 @@ const (
 	ActorTypeRoot = "root"
 	ActorTypeResource = "resource"
 	ActorTypeObject = "object"
-	ResourceTypeUsers = "/users"
 	ClassUsers = "users"
+	ResourceTypeUsers = "/users"
 	ResourceRegister = "/register"
 	ResourceLogin = "/login"
 )
@@ -88,71 +88,9 @@ func (a *Actor) Run() {
 			utils.Log("debug", a.res + ": Received message: " + string(messageString))
 
 			if requestWrapper.Res == a.res {
-				// if the resource of the message is this hub's resource
+				// if the resource of the message is this actor's resource
 
-				var response messages.Message
-				var err error
-
-				authHeaders := requestWrapper.Message.Headers["Authorization"]
-				if authHeaders!= nil && len(authHeaders) > 0 {
-					accessToken := authHeaders[0]
-					userData, tokenErr := auth.VerifyToken(accessToken)
-					fmt.Println(userData)
-					fmt.Println(tokenErr)
-				}
-
-				if strings.EqualFold(requestWrapper.Message.Command, "get") {
-
-					if strings.EqualFold(a.res, ResourceLogin) {                    // login request
-						response, err = auth.HandleLogin(requestWrapper, a.adapter)
-					} else if strings.EqualFold(a.actorType, ActorTypeObject) {        // get object by id
-						response.Body, err = a.adapter.HandleGetById(requestWrapper)
-
-						// delete the password field if the object type is user
-						if strings.EqualFold(a.class, ClassUsers) {
-							delete(response.Body, "password")
-						}
-					} else if strings.EqualFold(a.actorType, ActorTypeResource) {    // query objects
-						response.Body, err = a.adapter.HandleGet(requestWrapper)
-
-						// delete the password field if the object type is user
-						if strings.EqualFold(a.res, ResourceTypeUsers) {
-							users := response.Body["data"]
-							for _, user := range users.([]map[string]interface{}) {
-								delete(user, "password")
-							}
-						}
-					}
-				} else if strings.EqualFold(requestWrapper.Message.Command, "post") {
-
-					if strings.EqualFold(a.res, ResourceTypeUsers) {                // post on users not allowed
-						response.Status = http.StatusMethodNotAllowed
-					} else if strings.EqualFold(a.res, ResourceRegister) {            // sign up request
-						response, err = auth.HandleSignUp(requestWrapper, a.adapter)
-					} else if strings.EqualFold(a.actorType, ActorTypeResource) {    // create object request
-						response.Body, err = a.adapter.HandlePost(requestWrapper)
-						response.Status = http.StatusCreated
-					} else if strings.EqualFold(a.actorType, ActorTypeObject) {        // post on objects are not allowed
-						response.Status = http.StatusBadRequest
-					}
-				} else if strings.EqualFold(requestWrapper.Message.Command, "put") {
-
-					if strings.EqualFold(a.actorType, ActorTypeResource) {            // put on resources are not allowed
-						response.Status = http.StatusBadRequest
-					} else if strings.EqualFold(a.actorType, ActorTypeObject) {        // update object
-						response.Body, err = a.adapter.HandlePut(requestWrapper)
-					}
-				} else if strings.EqualFold(requestWrapper.Message.Command, "delete") {
-
-					if strings.EqualFold(a.actorType, ActorTypeResource) {            // delete on resources are not allowed
-						response.Status = http.StatusBadRequest
-					} else if strings.EqualFold(a.actorType, ActorTypeObject) {        // delete object
-						response.Body, err = a.adapter.HandleDelete(requestWrapper)
-						if err == nil {
-							response.Status = http.StatusNoContent
-						}
-					}
-				}
+				response, err := a.handleRequest(requestWrapper)
 
 				if err != nil && response.Status == 0 {
 					response.Status = (err.(*utils.Error)).Code
@@ -160,21 +98,116 @@ func (a *Actor) Run() {
 				a.checkAndSend(requestWrapper.Listener, response)
 
 			} else {
-				// if the resource belongs to a children hub
+				// if the resource belongs to a children actor
 				childRes := getChildRes(requestWrapper.Res, a.res)
 
-				hub, exists := a.children[childRes]
+				actor, exists := a.children[childRes]
 				if !exists {
-					//   if children doesn't exists, create children hub for the res
-					hub = CreateActor(childRes, a.level + 1, a.Inbox)
-					go hub.Run()
-					a.children[childRes] = hub
+					// if children doesn't exists, create a child actor for the res
+					actor = CreateActor(childRes, a.level + 1, a.Inbox)
+					go actor.Run()
+					a.children[childRes] = actor
 				}
-				//   forward message to the children hub
-				hub.Inbox <- requestWrapper
+				//   forward message to the children actor
+				actor.Inbox <- requestWrapper
 			}
 		}
 	}
+}
+
+func (a *Actor) handleRequest(requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
+
+	permissions, permissionErr := auth.GetPermissions(requestWrapper, a.adapter)
+	fmt.Println(permissions)
+
+	if permissionErr.Code != 0 {
+		response.Status = permissionErr.Code
+	}else if strings.EqualFold(requestWrapper.Message.Command, "get") {
+		if permissions["get"] || permissions["query"] {
+			response, err = a.handleGet(requestWrapper)
+		} else {
+			err = &utils.Error{http.StatusUnauthorized, "Unauthorized"}
+		}
+	} else if strings.EqualFold(requestWrapper.Message.Command, "post") {
+		response, err = a.handlePost(requestWrapper)
+		fmt.Println(err)
+	} else if strings.EqualFold(requestWrapper.Message.Command, "put") {
+		response, err = a.handlePut(requestWrapper)
+	} else if strings.EqualFold(requestWrapper.Message.Command, "delete") {
+		response, err = a.handleDelete(requestWrapper)
+	}
+	return
+}
+
+func (a *Actor) isObjectTypeActor() bool {
+	return strings.EqualFold(a.actorType, ActorTypeObject)
+}
+
+func (a *Actor) isResourceTypeActor() bool {
+	return strings.EqualFold(a.actorType, ActorTypeResource)
+}
+
+func (a *Actor) handleGet(requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
+
+	if strings.EqualFold(a.res, ResourceLogin) {                        // login request
+		response, err = auth.HandleLogin(requestWrapper, a.adapter)
+	} else if strings.EqualFold(a.actorType, ActorTypeObject) {         // get object by id
+		response.Body, err = a.adapter.HandleGetById(requestWrapper)
+
+		// delete the password field if the object type is user
+		if strings.EqualFold(a.class, ClassUsers) {
+			delete(response.Body, "password")
+		}
+	} else if strings.EqualFold(a.actorType, ActorTypeResource) {        // query objects
+		response.Body, err = a.adapter.HandleGet(requestWrapper)
+
+		// TODO filter fields
+		// delete the password field if the object type is user
+		if strings.EqualFold(a.res, ResourceTypeUsers) {
+			users := response.Body["data"]
+			for _, user := range users.([]map[string]interface{}) {
+				delete(user, "password")
+			}
+		}
+	}
+	return
+}
+
+func (a *Actor) handlePost(requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
+	if strings.EqualFold(a.res, ResourceTypeUsers) {                    // post on users not allowed
+		response.Status = http.StatusMethodNotAllowed
+	} else if strings.EqualFold(a.res, ResourceRegister) {              // sign up request
+		response, err = auth.HandleSignUp(requestWrapper, a.adapter)
+	} else if strings.EqualFold(a.actorType, ActorTypeResource) {       // create object request
+		response.Body, err = a.adapter.HandlePost(requestWrapper)
+		response.Status = http.StatusCreated
+	} else if strings.EqualFold(a.actorType, ActorTypeObject) {         // post on objects are not allowed
+		response.Status = http.StatusBadRequest
+	}
+	return
+}
+
+func (a *Actor) handlePut(requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
+
+	if strings.EqualFold(a.actorType, ActorTypeResource) {            // put on resources are not allowed
+		response.Status = http.StatusBadRequest
+	} else if strings.EqualFold(a.actorType, ActorTypeObject) {        // update object
+		response.Body, err = a.adapter.HandlePut(requestWrapper)
+	}
+	return
+}
+
+func (a *Actor) handleDelete(requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
+
+	if strings.EqualFold(a.actorType, ActorTypeResource) {            // delete on resources are not allowed
+		response.Status = http.StatusBadRequest
+	} else if strings.EqualFold(a.actorType, ActorTypeObject) {        // delete object
+		response.Body, err = a.adapter.HandleDelete(requestWrapper)
+		if err == nil {
+			response.Status = http.StatusNoContent
+		}
+	}
+	return
 }
 
 func (a *Actor) checkAndSend(c chan messages.Message, m messages.Message) {
