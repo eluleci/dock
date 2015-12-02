@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"strings"
 	"net/http"
-	"fmt"
 )
 
 const (
@@ -90,7 +89,7 @@ func (a *Actor) Run() {
 			if requestWrapper.Res == a.res {
 				// if the resource of the message is this actor's resource
 
-				response, err := a.handleRequest(requestWrapper)
+				response, err := handleRequest(a, requestWrapper)
 
 				if err != nil && response.Status == 0 {
 					response.Status = (err.(*utils.Error)).Code
@@ -115,41 +114,6 @@ func (a *Actor) Run() {
 	}
 }
 
-func (a *Actor) handleRequest(requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
-
-	permissions, permissionErr := auth.GetPermissions(requestWrapper, a.adapter)
-	fmt.Println(permissions)
-
-	if permissionErr.Code != 0 {
-		response.Status = permissionErr.Code
-	}else if strings.EqualFold(requestWrapper.Message.Command, "get") {
-		if permissions["get"] || permissions["query"] {
-			response, err = a.handleGet(requestWrapper)
-		} else {
-			err = &utils.Error{http.StatusUnauthorized, "Unauthorized"}
-		}
-	} else if strings.EqualFold(requestWrapper.Message.Command, "post") {
-		if permissions["create"] {
-			response, err = a.handlePost(requestWrapper)
-		} else {
-			err = &utils.Error{http.StatusUnauthorized, "Unauthorized"}
-		}
-	} else if strings.EqualFold(requestWrapper.Message.Command, "put") {
-		if permissions["update"] {
-			response, err = a.handlePut(requestWrapper)
-		} else {
-			err = &utils.Error{http.StatusUnauthorized, "Unauthorized"}
-		}
-	} else if strings.EqualFold(requestWrapper.Message.Command, "delete") {
-		if permissions["delete"] {
-			response, err = a.handleDelete(requestWrapper)
-		} else {
-			err = &utils.Error{http.StatusUnauthorized, "Unauthorized"}
-		}
-	}
-	return
-}
-
 func (a *Actor) isObjectTypeActor() bool {
 	return strings.EqualFold(a.actorType, ActorTypeObject)
 }
@@ -158,33 +122,57 @@ func (a *Actor) isResourceTypeActor() bool {
 	return strings.EqualFold(a.actorType, ActorTypeResource)
 }
 
-func (a *Actor) handleGet(requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
+var handleRequest = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
 
-	if strings.EqualFold(a.res, ResourceLogin) {                        // login request
-		response, err = auth.HandleLogin(requestWrapper, a.adapter)
-	} else if strings.EqualFold(a.actorType, ActorTypeObject) {         // get object by id
-		response.Body, err = a.adapter.HandleGetById(requestWrapper)
+	permissions, permissionErr := auth.GetPermissions(requestWrapper, a.adapter)
 
-		// delete the password field if the object type is user
-		if strings.EqualFold(a.class, ClassUsers) {
-			delete(response.Body, "password")
+	if permissionErr.Code != 0 {
+		response.Status = permissionErr.Code
+	} else if strings.EqualFold(requestWrapper.Message.Command, "get") {
+		if permissions["get"] || permissions["query"] {
+			response, err = handleGet(a, requestWrapper)
+		} else {
+			err = &utils.Error{http.StatusUnauthorized, "Unauthorized"}
 		}
-	} else if strings.EqualFold(a.actorType, ActorTypeResource) {        // query objects
-		response.Body, err = a.adapter.HandleGet(requestWrapper)
-
-		// TODO filter fields
-		// delete the password field if the object type is user
-		if strings.EqualFold(a.res, ResourceTypeUsers) {
-			users := response.Body["data"]
-			for _, user := range users.([]map[string]interface{}) {
-				delete(user, "password")
-			}
+	} else if strings.EqualFold(requestWrapper.Message.Command, "post") {
+		if permissions["create"] {
+			response, err = handlePost(a, requestWrapper)
+		} else {
+			err = &utils.Error{http.StatusUnauthorized, "Unauthorized"}
+		}
+	} else if strings.EqualFold(requestWrapper.Message.Command, "put") {
+		if permissions["update"] {
+			response, err = handlePut(a, requestWrapper)
+		} else {
+			err = &utils.Error{http.StatusUnauthorized, "Unauthorized"}
+		}
+	} else if strings.EqualFold(requestWrapper.Message.Command, "delete") {
+		if permissions["delete"] {
+			response, err = handleDelete(a, requestWrapper)
+		} else {
+			err = &utils.Error{http.StatusUnauthorized, "Unauthorized"}
 		}
 	}
 	return
 }
 
-func (a *Actor) handlePost(requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
+var handleGet = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
+
+	if strings.EqualFold(a.res, ResourceLogin) {                        // login request
+		response, err = auth.HandleLogin(requestWrapper, a.adapter)
+	} else if strings.EqualFold(a.actorType, ActorTypeObject) {         // get object by id
+		response.Body, err = adapters.HandleGetById(a.adapter, requestWrapper)
+	} else if strings.EqualFold(a.actorType, ActorTypeResource) {        // query objects
+		response.Body, err = adapters.HandleGet(a.adapter, requestWrapper)
+	}
+
+	if err == nil {
+		response.Body = filterFields(a, response.Body)
+	}
+	return
+}
+
+var handlePost = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
 	if strings.EqualFold(a.res, ResourceTypeUsers) {                    // post on users not allowed
 		response.Status = http.StatusMethodNotAllowed
 	} else if strings.EqualFold(a.res, ResourceRegister) {              // sign up request
@@ -198,7 +186,7 @@ func (a *Actor) handlePost(requestWrapper messages.RequestWrapper) (response mes
 	return
 }
 
-func (a *Actor) handlePut(requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
+var handlePut = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
 
 	if strings.EqualFold(a.actorType, ActorTypeResource) {            // put on resources are not allowed
 		response.Status = http.StatusBadRequest
@@ -208,7 +196,7 @@ func (a *Actor) handlePut(requestWrapper messages.RequestWrapper) (response mess
 	return
 }
 
-func (a *Actor) handleDelete(requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
+var handleDelete = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
 
 	if strings.EqualFold(a.actorType, ActorTypeResource) {            // delete on resources are not allowed
 		response.Status = http.StatusBadRequest
@@ -244,4 +232,29 @@ func getChildRes(res, parentRes string) (fullPath string) {
 		fullPath = "/" + relativePath
 	}
 	return
+}
+
+func filterFields(a *Actor, object map[string]interface{}) map[string]interface{} {
+
+	// filters 'password' fields of user objects
+	// TODO make a generic filter engine that takes the filter config from the configuration file such as:
+	//
+	//	{
+	//		filterOptions: {
+	//			"/users": ["password"]
+	//		}
+	//	}
+	//
+	if strings.EqualFold(a.res, ResourceTypeUsers) {
+		users := object["data"]
+		for _, user := range users.([]map[string]interface{}) {
+			delete(user, "password")
+		}
+	} else {
+		if strings.EqualFold(a.class, ClassUsers) {
+			delete(object, "password")
+		}
+	}
+
+	return object
 }

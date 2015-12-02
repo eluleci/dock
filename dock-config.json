@@ -1,6 +1,6 @@
 {
   "mongo": {
-    "address":  "127.0.0.1",
-    "name":     "dock-db"
+    "address":  "104.155.74.28",
+    "name":     "biddy-db"
   }
 }

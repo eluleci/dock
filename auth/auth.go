@@ -64,7 +64,7 @@ func HandleSignUp(requestWrapper messages.RequestWrapper, dbAdapter *adapters.Mo
 	return
 }
 
-func HandleLogin(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (response messages.Message, err error) {
+var HandleLogin = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (response messages.Message, err error) {
 
 	emailArray, hasEmail := requestWrapper.Message.Parameters["email"]
 	usernameArray, hasUsername := requestWrapper.Message.Parameters["username"]
@@ -105,8 +105,7 @@ func HandleLogin(requestWrapper messages.RequestWrapper, dbAdapter *adapters.Mon
 	return
 }
 
-
-func GetPermissions(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (permissions map[string]bool, err utils.Error) {
+var GetPermissions = func (requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (permissions map[string]bool, err utils.Error) {
 
 	res := requestWrapper.Res
 	if strings.EqualFold(res, ResourceLogin) || strings.EqualFold(res, ResourceRegister) {
@@ -158,7 +157,7 @@ func getRolesOfUser(requestWrapper messages.RequestWrapper) (roles []string, err
 		m.Res = "/users/" + userId
 		rw.Message = m
 
-		user, getErr := dbAdapter.HandleGetById(rw)
+		user, getErr := adapters.HandleGetById(dbAdapter, rw)
 		if getErr != nil {
 			err = utils.Error{800, ""}
 			return
@@ -187,7 +186,7 @@ func extractUserFromRequest(requestWrapper messages.RequestWrapper) (user map[st
 
 func getPermissionsOnObject(roles []string, requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (permissions map[string]bool, err error) {
 
-	userData, getErr := dbAdapter.HandleGetById(requestWrapper)
+	userData, getErr := adapters.HandleGetById(dbAdapter, requestWrapper)
 
 	if getErr != nil {
 		err = getErr
@@ -271,7 +270,7 @@ func getAccountData(requestWrapper messages.RequestWrapper, dbAdapter *adapters.
 		return
 	}
 
-	results, fetchErr := dbAdapter.HandleGet(requestWrapper)
+	results, fetchErr := adapters.HandleGet(dbAdapter, requestWrapper)
 	resultsAsMap := results["data"].([]map[string]interface{})
 	if fetchErr != nil || len(resultsAsMap) == 0 {
 		return

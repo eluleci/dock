@@ -11,3 +11,31 @@ Dock, currently, doesn't have storage system in it. It is only a web interface f
 Dock requires a `dock-config.json` file to boot.
 
 Assuming **Go** is installed, clone the repo and run **main.go** with `go run main.go` command. 
+
+## Documentation
+
+### Registration
+
+#### Sign up with email
+
+```
+POST
+/register
+{
+	"email": "",
+	"password": ""
+}
+```
+
+#### Sign up with username
+
+```
+POST
+/register
+{
+	"username": "",
+	"password": ""
+}
+```
+
+#### Login with email

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"net/http"
 //	"fmt"
+	"fmt"
 )
 
 type MongoAdapter struct {
@@ -44,7 +45,7 @@ func (m *MongoAdapter) HandlePost(requestWrapper messages.RequestWrapper) (respo
 	return
 }
 
-func (m *MongoAdapter) HandleGetById(requestWrapper messages.RequestWrapper) (response map[string]interface{}, err error) {
+var HandleGetById = func (m *MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err error) {
 
 	message := requestWrapper.Message
 	id := message.Res[strings.LastIndex(message.Res, "/")+1:]
@@ -60,7 +61,7 @@ func (m *MongoAdapter) HandleGetById(requestWrapper messages.RequestWrapper) (re
 	return
 }
 
-func (m *MongoAdapter) HandleGet(requestWrapper messages.RequestWrapper) (response map[string]interface{}, err error) {
+var HandleGet = func (m *MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err error) {
 
 	message := requestWrapper.Message
 
@@ -76,6 +77,7 @@ func (m *MongoAdapter) HandleGet(requestWrapper messages.RequestWrapper) (respon
 	err = m.Collection.Find(whereParams).All(&results)
 	if err != nil {
 		utils.Log("fatal", "Querying items failed")
+		fmt.Println(err)
 		err = &utils.Error{http.StatusInternalServerError, "Querying items failed."};
 		response["message"] = "Database request failed."
 		return
