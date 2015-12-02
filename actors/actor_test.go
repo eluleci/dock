@@ -9,6 +9,8 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"net/http"
 	"os"
+	"strings"
+	"gopkg.in/mgo.v2"
 )
 
 var _handleRequest = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message) {
@@ -31,12 +33,17 @@ var _handleDelete = func(a *Actor, requestWrapper messages.RequestWrapper) (resp
 	return
 }
 
+var _CreateActor = func (res string, level int, parentInbox chan messages.RequestWrapper) (a Actor) {
+	return
+}
+
 func TestMain(m *testing.M) {
 	saveRealFunctions()
 	os.Exit(m.Run())
 }
 
 func saveRealFunctions() {
+	_CreateActor = CreateActor
 	_handleRequest = handleRequest
 	_handleGet = handleGet
 	_handlePost = handlePost
@@ -45,6 +52,7 @@ func saveRealFunctions() {
 }
 
 func resetFunctions() {
+	CreateActor = _CreateActor
 	handleRequest = _handleRequest
 	handleGet = _handleGet
 	handlePost = _handlePost
@@ -77,28 +85,37 @@ func TestInbox(t *testing.T) {
 		So(called, ShouldBeTrue)
 	})
 
-	/*Convey("Should forward message to a child actor", t, func() {
-		var called bool
-		handleRequest = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message) {
-			called = true
-			return
-		}
+	Convey("Should forward message to a child actor", t, func() {
+		parentRes := "/users"
+		childRes := "/users/123"
 
-		var called2 bool
-		CreateActor = func(res string, level int, parentInbox chan messages.RequestWrapper) (a Actor) {
-			called2 = true
-			a.res = "/aq"
+		var calledOnParent bool
+		var calledOnChild bool
+		handleRequest = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message) {
+			if strings.EqualFold(a.res, parentRes) {
+				calledOnParent = true
+			}
+			if strings.EqualFold(a.res, childRes) {
+				calledOnChild = true
+			}
 			return
 		}
 
 		var requestWrapper messages.RequestWrapper
-		requestWrapper.Res = "/users/123"
+		requestWrapper.Res = childRes
 		responseChannel := make(chan messages.Message)
 		requestWrapper.Listener = responseChannel
 
+		CreateActor = func(res string, level int, parentInbox chan messages.RequestWrapper) (a Actor) {
+			a.res = childRes
+			a.level = 2
+			a.Inbox = make(chan messages.RequestWrapper)
+			return
+		}
+
 		var actor Actor
-		actor.res = "/users"
-		actor.level = 0
+		actor.res = parentRes
+		actor.level = 1
 		actor.children = make(map[string]Actor)
 		actor.Inbox = make(chan messages.RequestWrapper)
 		go actor.Run()
@@ -106,9 +123,42 @@ func TestInbox(t *testing.T) {
 		response := <-responseChannel
 
 		So(response, ShouldNotBeNil)
-		So(called, ShouldBeTrue)
-		So(called2, ShouldBeTrue)
-	})*/
+		So(calledOnParent, ShouldBeFalse)
+		So(calledOnChild, ShouldBeTrue)
+	})
+}
+
+func TestCreateActor(t *testing.T) {
+
+	resetFunctions()
+	Convey("Should create actor", t, func() {
+		adapters.MongoDB = &mgo.Database{}
+		actor := CreateActor("/", 0, nil)
+		So(actor.res, ShouldEqual, "/");
+		So(actor.actorType, ShouldEqual, ActorTypeRoot);
+	})
+	Convey("Should create actor for register", t, func() {
+		adapters.MongoDB = &mgo.Database{}
+		actor := CreateActor(ResourceRegister, 0, nil)
+		So(actor.res, ShouldEqual, ResourceRegister);
+		So(actor.class, ShouldEqual, ClassUsers);
+	})
+	Convey("Should create actor for login", t, func() {
+		adapters.MongoDB = &mgo.Database{}
+		actor := CreateActor(ResourceLogin, 0, nil)
+		So(actor.res, ShouldEqual, ResourceLogin);
+		So(actor.class, ShouldEqual, ClassUsers);
+	})
+	Convey("Should create actor for collection", t, func() {
+		adapters.MongoDB = &mgo.Database{}
+		actor := CreateActor("/comments", 1, nil)
+		So(actor.class, ShouldEqual, "comments");
+	})
+	Convey("Should create actor for object", t, func() {
+		adapters.MongoDB = &mgo.Database{}
+		actor := CreateActor("/comments/123", 2, nil)
+		So(actor.class, ShouldEqual, "comments");
+	})
 }
 
 func TestHandleRequest(t *testing.T) {

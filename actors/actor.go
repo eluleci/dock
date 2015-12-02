@@ -34,10 +34,12 @@ type Actor struct {
 }
 
 var CreateActor = func (res string, level int, parentInbox chan messages.RequestWrapper) (a Actor) {
-	class := retrieveClassName(res, level)
 
+	var className string
 	if strings.EqualFold(res, ResourceLogin) || strings.EqualFold(res, ResourceRegister) {
-		class = ClassUsers
+		className = ClassUsers
+	} else {
+		className = retrieveClassName(res, level)
 	}
 
 	if level == 0 {
@@ -50,11 +52,11 @@ var CreateActor = func (res string, level int, parentInbox chan messages.Request
 
 	a.res = res
 	a.level = level
-	a.class = class
+	a.class = className
 	a.children = make(map[string]Actor)
 	a.Inbox = make(chan messages.RequestWrapper)
 	a.parentInbox = parentInbox
-	a.adapter = &adapters.MongoAdapter{adapters.MongoDB.C(class)}
+	a.adapter = &adapters.MongoAdapter{adapters.MongoDB.C(className)}
 
 	return
 }
@@ -66,9 +68,8 @@ func retrieveClassName(res string, level int) (string) {
 		return res[1:]
 	} else if level == 2 {
 		return res[1:strings.LastIndex(res, "/")]
-	} else {
-		return ""
 	}
+	return ""
 
 	// TODO: return class names of more complicated resources like: /Post/123/Author (return User)
 }
@@ -113,14 +114,6 @@ func (a *Actor) Run() {
 			}
 		}
 	}
-}
-
-func (a *Actor) isObjectTypeActor() bool {
-	return strings.EqualFold(a.actorType, ActorTypeObject)
-}
-
-func (a *Actor) isResourceTypeActor() bool {
-	return strings.EqualFold(a.actorType, ActorTypeCollection)
 }
 
 var handleRequest = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message) {
