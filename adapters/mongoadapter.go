@@ -19,7 +19,7 @@ type MongoAdapter struct {
 
 var MongoDB *mgo.Database
 
-func (m *MongoAdapter) HandlePost(requestWrapper messages.RequestWrapper) (response map[string]interface{}, err error) {
+var HandlePost = func (m *MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err error) {
 
 	message := requestWrapper.Message
 
@@ -91,7 +91,7 @@ var HandleGet = func (m *MongoAdapter, requestWrapper messages.RequestWrapper) (
 	return
 }
 
-func (m *MongoAdapter) HandlePut(requestWrapper messages.RequestWrapper) (response map[string]interface{}, err error) {
+var HandlePut = func (m *MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err error) {
 
 	message := requestWrapper.Message
 	message.Body["updatedAt"] = int32(time.Now().Unix())
@@ -124,7 +124,7 @@ func (m *MongoAdapter) HandlePut(requestWrapper messages.RequestWrapper) (respon
 	return
 }
 
-func (m *MongoAdapter) HandleDelete(requestWrapper messages.RequestWrapper) (response map[string]interface{}, err error) {
+var HandleDelete = func (m *MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err error) {
 
 	message := requestWrapper.Message
 	id := message.Res[strings.LastIndex(message.Res, "/")+1:]

@@ -28,7 +28,7 @@ var defaultPermissions = map[string]bool{
 
 }
 
-func HandleSignUp(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (response messages.Message, err error) {
+var HandleSignUp = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (response messages.Message, err error) {
 
 	usernameArray, hasUsername := requestWrapper.Message.Body["username"]
 	emailArray, hasEmail := requestWrapper.Message.Body["email"]
@@ -55,7 +55,7 @@ func HandleSignUp(requestWrapper messages.RequestWrapper, dbAdapter *adapters.Mo
 			return
 		}
 		requestWrapper.Message.Body["password"] = string(hashedPassword)
-		response.Body, err = dbAdapter.HandlePost(requestWrapper)
+		response.Body, err = adapters.HandlePost(dbAdapter, requestWrapper)
 		response.Status = http.StatusCreated
 	} else {
 		response.Status = http.StatusBadRequest
@@ -105,7 +105,7 @@ var HandleLogin = func(requestWrapper messages.RequestWrapper, dbAdapter *adapte
 	return
 }
 
-var GetPermissions = func (requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (permissions map[string]bool, err utils.Error) {
+var GetPermissions = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (permissions map[string]bool, err utils.Error) {
 
 	res := requestWrapper.Res
 	if strings.EqualFold(res, ResourceLogin) || strings.EqualFold(res, ResourceRegister) {

@@ -8,15 +8,112 @@ import (
 	"github.com/eluleci/dock/utils"
 	. "github.com/smartystreets/goconvey/convey"
 	"net/http"
+	"os"
 )
 
-
-var originalHandleGet = func (a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
+var _handleRequest = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message) {
 	return
+}
+
+var _handleGet = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
+	return
+}
+
+var _handlePost = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
+	return
+}
+
+var _handlePut = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
+	return
+}
+
+var _handleDelete = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
+	return
+}
+
+func TestMain(m *testing.M) {
+	saveRealFunctions()
+	os.Exit(m.Run())
+}
+
+func saveRealFunctions() {
+	_handleRequest = handleRequest
+	_handleGet = handleGet
+	_handlePost = handlePost
+	_handlePut = handlePut
+	_handleDelete = handleDelete
+}
+
+func resetFunctions() {
+	handleRequest = _handleRequest
+	handleGet = _handleGet
+	handlePost = _handlePost
+	handlePut = _handlePut
+	handleDelete = _handleDelete
+}
+
+func TestInbox(t *testing.T) {
+
+	Convey("Should call actor.handleRequest", t, func() {
+		var called bool
+		handleRequest = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message) {
+			called = true
+			return
+		}
+
+		var requestWrapper messages.RequestWrapper
+		requestWrapper.Res = "/"
+		responseChannel := make(chan messages.Message)
+		requestWrapper.Listener = responseChannel
+
+		var actor Actor
+		actor.res = "/"
+		actor.Inbox = make(chan messages.RequestWrapper)
+		go actor.Run()
+		actor.Inbox <- requestWrapper
+		response := <-responseChannel
+
+		So(response, ShouldNotBeNil)
+		So(called, ShouldBeTrue)
+	})
+
+	/*Convey("Should forward message to a child actor", t, func() {
+		var called bool
+		handleRequest = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message) {
+			called = true
+			return
+		}
+
+		var called2 bool
+		CreateActor = func(res string, level int, parentInbox chan messages.RequestWrapper) (a Actor) {
+			called2 = true
+			a.res = "/aq"
+			return
+		}
+
+		var requestWrapper messages.RequestWrapper
+		requestWrapper.Res = "/users/123"
+		responseChannel := make(chan messages.Message)
+		requestWrapper.Listener = responseChannel
+
+		var actor Actor
+		actor.res = "/users"
+		actor.level = 0
+		actor.children = make(map[string]Actor)
+		actor.Inbox = make(chan messages.RequestWrapper)
+		go actor.Run()
+		actor.Inbox <- requestWrapper
+		response := <-responseChannel
+
+		So(response, ShouldNotBeNil)
+		So(called, ShouldBeTrue)
+		So(called2, ShouldBeTrue)
+	})*/
 }
 
 func TestHandleRequest(t *testing.T) {
 
+	resetFunctions()
 	Convey("Should call auth.GetPermissions", t, func() {
 
 		var getPermissionsCalled bool
@@ -37,7 +134,7 @@ func TestHandleRequest(t *testing.T) {
 			return
 		}
 
-		response, _ := handleRequest(&Actor{}, messages.RequestWrapper{})
+		response := handleRequest(&Actor{}, messages.RequestWrapper{})
 		So(response.Status, ShouldEqual, http.StatusInternalServerError)
 
 	})
@@ -45,16 +142,16 @@ func TestHandleRequest(t *testing.T) {
 	/////////////////////////
 	// GET
 	/////////////////////////
+	resetFunctions()
 	Convey("Should call handleGet", t, func() {
 
 		auth.GetPermissions = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (permissions map[string]bool, err utils.Error) {
-			permissions = map[string]bool{"create": true,"query": true,"get": true,"update": true,"delete": true,}
+			permissions = map[string]bool{"create": true, "query": true, "get": true, "update": true, "delete": true, }
 			return
 		}
 
 		var called bool
-		originalHandleGet = handleGet
-		handleGet = func (a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
+		handleGet = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
 
 			called = true
 			return
@@ -66,8 +163,7 @@ func TestHandleRequest(t *testing.T) {
 		var rw messages.RequestWrapper
 		rw.Message = m
 
-		_, err := handleRequest(&Actor{}, rw)
-		So(err, ShouldBeNil)
+		handleRequest(&Actor{}, rw)
 		So(called, ShouldBeTrue)
 
 	})
@@ -75,7 +171,7 @@ func TestHandleRequest(t *testing.T) {
 	Convey("Should return Authorization error for GET", t, func() {
 
 		auth.GetPermissions = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (permissions map[string]bool, err utils.Error) {
-			permissions = map[string]bool{"create": true,"update": true,"delete": true,}
+			permissions = map[string]bool{"create": true, "update": true, "delete": true, }
 			return
 		}
 
@@ -85,9 +181,8 @@ func TestHandleRequest(t *testing.T) {
 		var rw messages.RequestWrapper
 		rw.Message = m
 
-		_, err := handleRequest(&Actor{}, rw)
-		So(err, ShouldNotBeNil)
-		So((err.(*utils.Error)).Code, ShouldEqual, http.StatusUnauthorized)
+		response := handleRequest(&Actor{}, rw)
+		So(response.Status, ShouldEqual, http.StatusUnauthorized)
 
 	})
 
@@ -97,12 +192,12 @@ func TestHandleRequest(t *testing.T) {
 	Convey("Should call handlePost", t, func() {
 
 		auth.GetPermissions = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (permissions map[string]bool, err utils.Error) {
-			permissions = map[string]bool{"create": true,"query": true,"get": true,"update": true,"delete": true,}
+			permissions = map[string]bool{"create": true, "query": true, "get": true, "update": true, "delete": true, }
 			return
 		}
 
 		var called bool
-		handlePost = func (a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
+		handlePost = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
 			called = true
 			return
 		}
@@ -113,16 +208,14 @@ func TestHandleRequest(t *testing.T) {
 		var rw messages.RequestWrapper
 		rw.Message = m
 
-		_, err := handleRequest(&Actor{}, rw)
-		So(err, ShouldBeNil)
+		handleRequest(&Actor{}, rw)
 		So(called, ShouldBeTrue)
-
 	})
 
 	Convey("Should return Authorization error for POST", t, func() {
 
 		auth.GetPermissions = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (permissions map[string]bool, err utils.Error) {
-			permissions = map[string]bool{"query": true,"get": true,"update": true,"delete": true,}
+			permissions = map[string]bool{"query": true, "get": true, "update": true, "delete": true, }
 			return
 		}
 
@@ -132,9 +225,8 @@ func TestHandleRequest(t *testing.T) {
 		var rw messages.RequestWrapper
 		rw.Message = m
 
-		_, err := handleRequest(&Actor{}, rw)
-		So(err, ShouldNotBeNil)
-		So((err.(*utils.Error)).Code, ShouldEqual, http.StatusUnauthorized)
+		response := handleRequest(&Actor{}, rw)
+		So(response.Status, ShouldEqual, http.StatusUnauthorized)
 
 	})
 
@@ -144,12 +236,12 @@ func TestHandleRequest(t *testing.T) {
 	Convey("Should call handlePut", t, func() {
 
 		auth.GetPermissions = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (permissions map[string]bool, err utils.Error) {
-			permissions = map[string]bool{"create": true,"query": true,"get": true,"update": true,"delete": true,}
+			permissions = map[string]bool{"create": true, "query": true, "get": true, "update": true, "delete": true, }
 			return
 		}
 
 		var called bool
-		handlePut = func (a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
+		handlePut = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
 			called = true
 			return
 		}
@@ -159,16 +251,14 @@ func TestHandleRequest(t *testing.T) {
 		var rw messages.RequestWrapper
 		rw.Message = m
 
-		_, err := handleRequest(&Actor{}, rw)
-		So(err, ShouldBeNil)
+		handleRequest(&Actor{}, rw)
 		So(called, ShouldBeTrue)
-
 	})
 
 	Convey("Should return Authorization error for PUT", t, func() {
 
 		auth.GetPermissions = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (permissions map[string]bool, err utils.Error) {
-			permissions = map[string]bool{"create": true,"query": true,"get": true,"delete": true,}
+			permissions = map[string]bool{"create": true, "query": true, "get": true, "delete": true, }
 			return
 		}
 
@@ -178,10 +268,8 @@ func TestHandleRequest(t *testing.T) {
 		var rw messages.RequestWrapper
 		rw.Message = m
 
-		_, err := handleRequest(&Actor{}, rw)
-		So(err, ShouldNotBeNil)
-		So((err.(*utils.Error)).Code, ShouldEqual, http.StatusUnauthorized)
-
+		response := handleRequest(&Actor{}, rw)
+		So(response.Status, ShouldEqual, http.StatusUnauthorized)
 	})
 
 	/////////////////////////
@@ -190,12 +278,12 @@ func TestHandleRequest(t *testing.T) {
 	Convey("Should call handleDelete", t, func() {
 
 		auth.GetPermissions = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (permissions map[string]bool, err utils.Error) {
-			permissions = map[string]bool{"create": true,"query": true,"get": true,"update": true,"delete": true,}
+			permissions = map[string]bool{"create": true, "query": true, "get": true, "update": true, "delete": true, }
 			return
 		}
 
 		var called bool
-		handleDelete = func (a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
+		handleDelete = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
 			called = true
 			return
 		}
@@ -205,16 +293,35 @@ func TestHandleRequest(t *testing.T) {
 		var rw messages.RequestWrapper
 		rw.Message = m
 
-		_, err := handleRequest(&Actor{}, rw)
-		So(err, ShouldBeNil)
+		handleRequest(&Actor{}, rw)
 		So(called, ShouldBeTrue)
+	})
 
+	Convey("Should call handleDelete and return error", t, func() {
+
+		auth.GetPermissions = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (permissions map[string]bool, err utils.Error) {
+			permissions = map[string]bool{"create": true, "query": true, "get": true, "update": true, "delete": true, }
+			return
+		}
+
+		handleDelete = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
+			err = &utils.Error{http.StatusNotFound, "Item not found."};
+			return
+		}
+
+		var m messages.Message
+		m.Command = "delete"
+		var rw messages.RequestWrapper
+		rw.Message = m
+
+		response := handleRequest(&Actor{}, rw)
+		So(response.Status, ShouldEqual, http.StatusNotFound)
 	})
 
 	Convey("Should return Authorization error for DELETE", t, func() {
 
 		auth.GetPermissions = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (permissions map[string]bool, err utils.Error) {
-			permissions = map[string]bool{"create": true,"query": true,"get": true,"update": true,}
+			permissions = map[string]bool{"create": true, "query": true, "get": true, "update": true, }
 			return
 		}
 
@@ -224,10 +331,8 @@ func TestHandleRequest(t *testing.T) {
 		var rw messages.RequestWrapper
 		rw.Message = m
 
-		_, err := handleRequest(&Actor{}, rw)
-		So(err, ShouldNotBeNil)
-		So((err.(*utils.Error)).Code, ShouldEqual, http.StatusUnauthorized)
-
+		response := handleRequest(&Actor{}, rw)
+		So(response.Status, ShouldEqual, http.StatusUnauthorized)
 	})
 }
 
@@ -254,7 +359,7 @@ func TestHandleGet(t *testing.T) {
 	Convey("Should call adapters.HandleGetById", t, func() {
 
 		var called bool
-		adapters.HandleGetById = func (m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err error) {
+		adapters.HandleGetById = func(m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err error) {
 			called = true
 			return
 		}
@@ -271,13 +376,13 @@ func TestHandleGet(t *testing.T) {
 	Convey("Should call adapters.HandleGet", t, func() {
 
 		var called bool
-		adapters.HandleGet = func (m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err error) {
+		adapters.HandleGet = func(m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err error) {
 			called = true
 			return
 		}
 
 		var actor Actor
-		actor.actorType = ActorTypeResource
+		actor.actorType = ActorTypeCollection
 		_, err := handleGet(&actor, messages.RequestWrapper{})
 		So(err, ShouldBeNil)
 		So(called, ShouldBeTrue)
@@ -286,6 +391,140 @@ func TestHandleGet(t *testing.T) {
 
 }
 
-func resetFunctions() {
-	handleGet = originalHandleGet
+func TestHandlePost(t *testing.T) {
+
+	resetFunctions()
+	Convey("Should return method not allowed", t, func() {
+
+		var actor Actor
+		actor.res = ResourceTypeUsers
+		response, _ := handlePost(&actor, messages.RequestWrapper{})
+		So(response.Status, ShouldEqual, http.StatusMethodNotAllowed)
+
+	})
+
+	Convey("Should call auth.HandleSignUp", t, func() {
+
+		var actor Actor
+		actor.res = ResourceRegister
+
+		var called bool
+		auth.HandleSignUp = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (response messages.Message, err error) {
+			called = true
+			return
+		}
+
+		_, err := handlePost(&actor, messages.RequestWrapper{})
+		So(err, ShouldBeNil)
+		So(called, ShouldBeTrue)
+
+	})
+
+	Convey("Should call auth.HandleSignUp", t, func() {
+
+		var actor Actor
+		actor.actorType = ActorTypeCollection
+
+		var called bool
+		adapters.HandlePost = func(m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err error) {
+			called = true
+			return
+		}
+
+		response, err := handlePost(&actor, messages.RequestWrapper{})
+		So(err, ShouldBeNil)
+		So(called, ShouldBeTrue)
+		So(response.Status, ShouldEqual, http.StatusCreated)
+	})
+
+	Convey("Should return bad request", t, func() {
+
+		var actor Actor
+		actor.actorType = ActorTypeObject
+
+		response, err := handlePost(&actor, messages.RequestWrapper{})
+		So(err, ShouldBeNil)
+		So(response.Status, ShouldEqual, http.StatusBadRequest)
+	})
+}
+
+func TestHandlePut(t *testing.T) {
+
+	resetFunctions()
+
+	Convey("Should return bad request", t, func() {
+
+		var actor Actor
+		actor.actorType = ActorTypeCollection
+
+		response, err := handlePut(&actor, messages.RequestWrapper{})
+		So(err, ShouldBeNil)
+		So(response.Status, ShouldEqual, http.StatusBadRequest)
+	})
+
+	Convey("Should call auth.HandleSignUp", t, func() {
+
+		var actor Actor
+		actor.actorType = ActorTypeObject
+
+		var called bool
+		adapters.HandlePut = func(m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err error) {
+			called = true
+			return
+		}
+
+		_, err := handlePut(&actor, messages.RequestWrapper{})
+		So(err, ShouldBeNil)
+		So(called, ShouldBeTrue)
+	})
+}
+
+func TestHandleDelete(t *testing.T) {
+
+	resetFunctions()
+	Convey("Should return bad request", t, func() {
+
+		var actor Actor
+		actor.actorType = ActorTypeCollection
+
+		response, err := handleDelete(&actor, messages.RequestWrapper{})
+		So(err, ShouldBeNil)
+		So(response.Status, ShouldEqual, http.StatusBadRequest)
+	})
+	Convey("Should call auth.HandleSignUp", t, func() {
+
+		var actor Actor
+		actor.actorType = ActorTypeObject
+
+		var called bool
+		adapters.HandleDelete = func(m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err error) {
+			called = true
+			return
+		}
+
+		_, err := handleDelete(&actor, messages.RequestWrapper{})
+		So(err, ShouldBeNil)
+		So(called, ShouldBeTrue)
+	})
+}
+
+func TestGetChildRes(t *testing.T) {
+
+	Convey("Should return correct res of the child", t, func() {
+		So(getChildRes("/users", "/"), ShouldEqual, "/users")
+		So(getChildRes("/users/", "/"), ShouldEqual, "/users")
+		So(getChildRes("/users/123", "/"), ShouldEqual, "/users")
+		So(getChildRes("/users/123", "/users"), ShouldEqual, "/users/123")
+		So(getChildRes("/users/123/", "/users/"), ShouldEqual, "/users/123")
+	})
+}
+
+func TestRetrieveClassName(t *testing.T) {
+
+	Convey("Should return correct class name", t, func() {
+		So(retrieveClassName("/", 0), ShouldEqual, "")
+		So(retrieveClassName("/users", 1), ShouldEqual, "users")
+		So(retrieveClassName("/users/123", 2), ShouldEqual, "users")
+		So(retrieveClassName("/users/123", 3), ShouldEqual, "")
+	})
 }
