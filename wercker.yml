@@ -31,6 +31,7 @@ build:
         name: go get
         code: |
           go get
+          go get -t github.com/smartystreets/goconvey
 
     # Build the project
     - script:
