@@ -11,7 +11,7 @@ import (
 	"gopkg.in/mgo.v2/bson"
 	"github.com/eluleci/dock/utils"
 	"strings"
-	"fmt"
+	"io/ioutil"
 )
 
 const (
@@ -28,45 +28,139 @@ var defaultPermissions = map[string]bool{
 
 }
 
-var HandleSignUp = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (response messages.Message, err error) {
+var httpClient = http.DefaultClient
+
+var HandleSignUp = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (response messages.Message, err *utils.Error) {
 
 	_, hasUsername := requestWrapper.Message.Body["username"]
 	_, hasEmail := requestWrapper.Message.Body["email"]
-	password, hasPassword := requestWrapper.Message.Body["password"]
+	_, hasFacebook := requestWrapper.Message.Body["facebook"]
 
-	if !(hasEmail || hasUsername) || !hasPassword {
-		response.Status = http.StatusBadRequest
+	if hasUsername || hasEmail {
+		response.Body, err = createLocalAccount(requestWrapper, dbAdapter)
+	} else if hasFacebook {
+		response.Body, err = createSocialAccount(requestWrapper, dbAdapter, httpClient)
+	} else {
+		err = &utils.Error{http.StatusBadRequest, "No suitable registration data found."}
 		return
 	}
 
-	var existingAccount map[string]interface{}
-	if hasUsername {
-		existingAccount = getAccountData(requestWrapper, dbAdapter)
-	} else if hasEmail {
-		existingAccount = getAccountData(requestWrapper, dbAdapter)
-	}
-
-	if existingAccount != nil {
-		response.Status = http.StatusConflict
+	if err != nil {
 		return
 	}
 
-	hashedPassword, hashErr := bcrypt.GenerateFromPassword([]byte(password.(string)), bcrypt.DefaultCost)
-	if hashErr != nil {
-		err = hashErr
-		response.Status = http.StatusInternalServerError
-		return
-	}
-	requestWrapper.Message.Body["password"] = string(hashedPassword)
-
-	response.Body, err = adapters.HandlePost(dbAdapter, requestWrapper)
-	fmt.Println(response.Body)
 	accessToken, tokenErr := generateToken(response.Body["_id"].(bson.ObjectId), response.Body)
 	if tokenErr == nil {
 		response.Body["accessToken"] = accessToken
 		response.Status = http.StatusCreated
 	} else {
 		response.Status = http.StatusInternalServerError
+	}
+	return
+}
+
+var createLocalAccount = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (response map[string]interface{}, err *utils.Error) {
+
+	_, hasUsername := requestWrapper.Message.Body["username"]
+	_, hasEmail := requestWrapper.Message.Body["email"]
+	password, hasPassword := requestWrapper.Message.Body["password"]
+
+	if !(hasEmail || hasUsername) || !hasPassword {
+		err = &utils.Error{http.StatusBadRequest, "Username or email, and password must be provided."}
+		return
+	}
+
+	existingAccount, _ := getAccountData(requestWrapper, dbAdapter)
+	if existingAccount != nil {
+		err = &utils.Error{http.StatusConflict, "User with same email-username already exists."}
+		return
+	}
+
+	hashedPassword, hashErr := bcrypt.GenerateFromPassword([]byte(password.(string)), bcrypt.DefaultCost)
+	if hashErr != nil {
+		err = &utils.Error{http.StatusInternalServerError, "Hashing password failed."}
+		return
+	}
+	requestWrapper.Message.Body["password"] = string(hashedPassword)
+
+	response, err = adapters.HandlePost(dbAdapter, requestWrapper)
+	return
+}
+
+var verificationEndpoint = "https://graph.facebook.com/debug_token"
+
+var createSocialAccount = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter, HTTPClient *http.Client) (response map[string]interface{}, err *utils.Error) {
+
+	facebookData, _ := requestWrapper.Message.Body["facebook"]
+	facebookDataAsMap := facebookData.(map[string]interface{})
+
+	userId, hasId := facebookDataAsMap["id"]
+	accessToken, hasAccessToken := facebookDataAsMap["accessToken"]
+
+	if !hasId || !hasAccessToken {
+		err = &utils.Error{http.StatusBadRequest, "Facebook data must contain id and access token."}
+		return
+	}
+
+	appFacebookAccessToken := "1002354526458218|j5aGV36GyRfmK0D-nE3eu3vtg1s"
+
+	urlBuilder := []string{verificationEndpoint, "?access_token=", appFacebookAccessToken, "&input_token=", accessToken.(string)}
+	verificationUrl := strings.Join(urlBuilder, "");
+
+	tokenResponse, verificationErr := HTTPClient.Get(verificationUrl)
+	if verificationErr != nil || tokenResponse.StatusCode != 200 {
+		err = &utils.Error{http.StatusInternalServerError, "Reaching Facebook API failed. "}
+		return
+	}
+
+	var responseBody interface{}
+	data, readErr := ioutil.ReadAll(tokenResponse.Body)
+	if readErr != nil {
+		err = &utils.Error{http.StatusInternalServerError, "Reading Facebook response failed."}
+		return
+	}
+
+	parseErr := json.Unmarshal(data, &responseBody)
+	if parseErr != nil {
+		err = &utils.Error{http.StatusInternalServerError, "Parsing Facebook response failed."}
+		return
+	}
+
+	responseBodyAsMap := responseBody.(map[string]interface{})
+	tokenInfo, hasTokenInfo := responseBodyAsMap["data"]
+	if !hasTokenInfo {
+		err = &utils.Error{http.StatusInternalServerError, "Unexpected response from Facebook while validating."}
+		return
+	}
+
+	tokenInfoAsMap := tokenInfo.(map[string]interface{})
+
+	tokensUserId, hasUserId := tokenInfoAsMap["user_id"]
+	isValid, hasIsValid := tokenInfoAsMap["is_valid"]
+	if !hasUserId || !hasIsValid {
+		err = &utils.Error{http.StatusInternalServerError, "Unexpected response from Facebook while validating."}
+		return
+	}
+
+	if !strings.EqualFold(tokensUserId.(string), userId.(string)) {
+		err = &utils.Error{http.StatusBadRequest, "User id doesn't match the token."}
+		return
+	}
+
+	if !isValid.(bool) {
+		err = &utils.Error{http.StatusBadRequest, "Token is not valid."}
+		return
+	}
+
+	existingAccount, _ := getAccountData(requestWrapper, dbAdapter)
+
+	if existingAccount == nil {
+		response, err = adapters.HandlePost(dbAdapter, requestWrapper)
+		response["isNewUser"] = true
+	} else {
+		response = existingAccount
+		response["isNewUser"] = false
+		// TODO update existing token with the new token. (optionally check which expires later)
 	}
 	return
 }
@@ -91,7 +185,15 @@ var HandleLogin = func(requestWrapper messages.RequestWrapper, dbAdapter *adapte
 		requestWrapper.Message.Body["email"] = emailArray[0]
 	}
 
-	accountData := getAccountData(requestWrapper, dbAdapter)
+	accountData, getAccountErr := getAccountData(requestWrapper, dbAdapter)
+	if getAccountErr != nil {
+		if getAccountErr.Code == http.StatusNotFound {
+			err = &utils.Error{http.StatusUnauthorized, "Credentials don't match or account doesn't exist."}
+		} else {
+			err = getAccountErr
+		}
+		return
+	}
 	existingPassword := accountData["password"].(string)
 
 	passwordError := bcrypt.CompareHashAndPassword([]byte(existingPassword), []byte(password))
@@ -134,7 +236,7 @@ var GetPermissions = func(requestWrapper messages.RequestWrapper, dbAdapter *ada
 		permissions, pErr = getPermissionsOnObject(roles, requestWrapper, dbAdapter)
 	} else {
 		// TODO handle this resources
-		fmt.Println("ERROR: auth.go.GetPermissions(): Count of the / is more than 2: " + requestWrapper.Res)
+		//		fmt.Println("ERROR: auth.go.GetPermissions(): Count of the / is more than 2: " + requestWrapper.Res)
 		err = utils.Error{http.StatusBadRequest, ""}
 	}
 
@@ -254,7 +356,7 @@ func verifyToken(tokenString string) (userData map[string]interface{}, err utils
 	return
 }
 
-var getAccountData = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (accountData map[string]interface{}) {
+var getAccountData = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (accountData map[string]interface{}, err *utils.Error) {
 
 	var whereParams = make(map[string]interface{})
 
@@ -262,15 +364,21 @@ var getAccountData = func(requestWrapper messages.RequestWrapper, dbAdapter *ada
 		paramUsername := make(map[string]string)
 		paramUsername["$eq"] = username.(string)
 		whereParams["username"] = paramUsername
-	}
-	if email, hasEmail := requestWrapper.Message.Body["email"]; hasEmail && email != "" {
+	} else if email, hasEmail := requestWrapper.Message.Body["email"]; hasEmail && email != "" {
 		paramEmail := make(map[string]string)
 		paramEmail["$eq"] = email.(string)
 		whereParams["email"] = paramEmail
+	} else if facebookData, hasFacebookData := requestWrapper.Message.Body["facebook"]; hasFacebookData {
+		facebookDataAsMap := facebookData.(map[string]interface{})
+		userId := facebookDataAsMap["id"]
+		paramFacebookId := make(map[string]string)
+		paramFacebookId["$eq"] = userId.(string)
+		whereParams["facebook.id"] = paramFacebookId
 	}
 
-	whereParamsJson, err := json.Marshal(whereParams)
-	if err != nil {
+	whereParamsJson, jsonErr := json.Marshal(whereParams)
+	if jsonErr != nil {
+		err = &utils.Error{http.StatusInternalServerError, "Creating user request failed."}
 		return
 	}
 	requestWrapper.Message.Parameters["where"] = []string{string(whereParamsJson)}
@@ -278,6 +386,7 @@ var getAccountData = func(requestWrapper messages.RequestWrapper, dbAdapter *ada
 	results, fetchErr := adapters.HandleGet(dbAdapter, requestWrapper)
 	resultsAsMap := results["data"].([]map[string]interface{})
 	if fetchErr != nil || len(resultsAsMap) == 0 {
+		err = &utils.Error{http.StatusNotFound, "Item not found."}
 		return
 	}
 	accountData = resultsAsMap[0]

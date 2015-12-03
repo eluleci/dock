@@ -153,6 +153,8 @@ var handleRequest = func(a *Actor, requestWrapper messages.RequestWrapper) (resp
 
 	if err != nil && response.Status == 0 {
 		response.Status = (err.(*utils.Error)).Code
+		response.Body = make(map[string]interface{})
+		response.Body["message"] = (err.(*utils.Error)).Message
 	}
 	return
 }
@@ -242,8 +244,10 @@ func filterFields(a *Actor, object map[string]interface{}) map[string]interface{
 	//
 	//	{
 	//		filterOptions: {
-	//			"/users": ["password"]
-	//		}
+	//			"/users": ["password"],
+	//			"/comments": ["score"]
+	//		},
+	//		triggersUrl: "api2.miwi.com"
 	//	}
 	//
 	if strings.EqualFold(a.res, ResourceTypeUsers) {

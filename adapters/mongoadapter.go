@@ -19,7 +19,7 @@ type MongoAdapter struct {
 
 var MongoDB *mgo.Database
 
-var HandlePost = func (m *MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err error) {
+var HandlePost = func (m *MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
 
 	message := requestWrapper.Message
 
@@ -31,10 +31,9 @@ var HandlePost = func (m *MongoAdapter, requestWrapper messages.RequestWrapper) 
 	message.Body["createdAt"] = createdAt
 	message.Body["updatedAt"] = createdAt
 
-	err = m.Collection.Insert(message.Body)
-	if err != nil {
-		err = &utils.Error{http.StatusInternalServerError, "Inserting item failed."};
-		response["message"] = "Database request failed."
+	insertError := m.Collection.Insert(message.Body)
+	if insertError != nil {
+		err = &utils.Error{http.StatusInternalServerError, "Inserting item to database failed."};
 		return
 	}
 

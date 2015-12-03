@@ -459,7 +459,7 @@ func TestHandlePost(t *testing.T) {
 		actor.res = ResourceRegister
 
 		var called bool
-		auth.HandleSignUp = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (response messages.Message, err error) {
+		auth.HandleSignUp = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (response messages.Message, err *utils.Error) {
 			called = true
 			return
 		}
@@ -476,7 +476,7 @@ func TestHandlePost(t *testing.T) {
 		actor.actorType = ActorTypeCollection
 
 		var called bool
-		adapters.HandlePost = func(m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err error) {
+		adapters.HandlePost = func(m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
 			called = true
 			return
 		}

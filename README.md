@@ -165,6 +165,16 @@ POST /register
 }
 ```
 
+**Response**
+
+```
+{
+  "_id": "5660236795fc151444e53f69",
+  "accessToken": "eyJhbGciOi.eyJleHAiOjE0NDk0MDAyOTU.Xa1tUvYgI_YqdA",
+  "createdAt": 1449141095
+}
+```
+
 #### Sign up with username
 
 **Request**
@@ -187,12 +197,51 @@ POST /register
 }
 ```
 
+#### Sign up with Facebook
+
+**Request**
+
+```
+POST /register
+{
+  "facebook": {
+    "id": "10153102991889648",
+    "accessToken": "CAAOPotl9EWoBAPeLlTcQWAEUjZB3SoJG2UCHh1cpf2Q5Ow3jWLfu8zndhH82Jaax8JFlijClzy0mos4f7ZCUotJxPr7ZAcUdJUk2bKGTqx6kbrq2FuMQgnZC8vXDGZCDTrWY5k5vWfGTw8zqBmti607L4soEQt8xnZCdgZCj7k45ElIDZCufbWxdiB1Q9hRFZA1ATTYeiZCE3NZBKbmQCJEHL5r"
+  }
+}
+```
+
+**Response**
+
+```
+{
+  "_id": "5660236795fc151444e53f69",
+  "accessToken": "eyJhbGciOi.eyJleHAiOjE0NDk0MDAyOTU.Xa1tUvYgI_YqdA",
+  "createdAt": 1449141095,
+  "isNewUser": true
+}
+```
+
 ### Login
 
 #### Login with email
 
+**Request**
+
 ```
 GET /login?email=johny@bravo.com&password=ihaveamazinghair
+```
+
+**Response**
+
+```
+{
+  "_id": "566022ba95fc1514392fe69c",
+  "accessToken": "eyJhbGciOiJI.eyJleHAiOjE0NDk0MTIzOTYsInVzZXIiOnsidXNlc.Juubl8V_xRC9y1srp",
+  "createdAt": 1449140922,
+  "updatedAt": 1449140922,
+  "email": "johny@bravo.com"
+}
 ```
 
 #### Login with username
@@ -201,3 +250,38 @@ GET /login?email=johny@bravo.com&password=ihaveamazinghair
 GET /login?username=johnybravo&password=ihaveamazinghair
 ```
 
+```
+{
+  "_id": "566022ba95fc1514392fe69c",
+  "accessToken": "eyJhbGciOiJI.eyJleHAiOjE0NDk0MTIzOTYsInVzZXIiOnsidXNlc.Juubl8V_xRC9y1srp",
+  "createdAt": 1449140922,
+  "updatedAt": 1449140922,
+  "username": "johnybravo"
+}
+```
+
+#### Login with Facebook
+
+**Request**
+
+```
+POST /register
+{
+  "facebook": {
+    "id": "10153102991889648",
+    "accessToken": "CAAOPotl9EWoBAPeLlTcQWAEUjZB3SoJG2UCHh1cpf2Q5Ow3jWLfu8zndhH82Jaax8JFlijClzy0mos4f7ZCUotJxPr7ZAcUdJUk2bKGTqx6kbrq2FuMQgnZC8vXDGZCDTrWY5k5vWfGTw8zqBmti607L4soEQt8xnZCdgZCj7k45ElIDZCufbWxdiB1Q9hRFZA1ATTYeiZCE3NZBKbmQCJEHL5r"
+  }
+}
+```
+
+**Response**
+
+```
+{
+  "_id": "5660236795fc151444e53f69",
+  "accessToken": "eyJhbGciOi.eyJleHAiOjE0NDk0MDAyOTU.Xa1tUvYgI_YqdA",
+  "createdAt": 1449141095,
+  "updatedAt": 1449141095,
+  "isNewUser": false
+}
+```
