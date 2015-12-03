@@ -77,43 +77,39 @@ var HandleLogin = func(requestWrapper messages.RequestWrapper, dbAdapter *adapte
 	usernameArray, hasUsername := requestWrapper.Message.Parameters["username"]
 	passwordArray, hasPassword := requestWrapper.Message.Parameters["password"]
 
-	if (hasEmail || hasUsername) && hasPassword {
-		password := passwordArray[0]
+	if !(hasEmail || hasUsername) || !hasPassword {
+		response.Status = http.StatusBadRequest
+		return
+	}
+	password := passwordArray[0]
 
-		requestWrapper.Message.Body = make(map[string]interface{})
-		if len(usernameArray) > 0 {
-			requestWrapper.Message.Body["username"] = usernameArray[0]
-		}
-		if len(emailArray) > 0 {
-			requestWrapper.Message.Body["email"] = emailArray[0]
-		}
+	// adding username or email to request wrapper to get account data
+	requestWrapper.Message.Body = make(map[string]interface{})
+	if hasUsername {
+		requestWrapper.Message.Body["username"] = usernameArray[0]
+	} else if hasEmail {
+		requestWrapper.Message.Body["email"] = emailArray[0]
+	}
 
-		accountData := getAccountData(requestWrapper, dbAdapter)
-		existingPassword := accountData["password"].(string)
+	accountData := getAccountData(requestWrapper, dbAdapter)
+	existingPassword := accountData["password"].(string)
 
-		passwordError := bcrypt.CompareHashAndPassword([]byte(existingPassword), []byte(password))
-		if passwordError == nil {
-			delete(accountData, "password")
-			response.Body = accountData
+	passwordError := bcrypt.CompareHashAndPassword([]byte(existingPassword), []byte(password))
+	if passwordError == nil {
+		delete(accountData, "password")
+		response.Body = accountData
 
-			accessToken, tokenErr := generateToken(accountData["_id"].(bson.ObjectId), accountData)
-			if tokenErr == nil {
-				response.Body["accessToken"] = accessToken
-				response.Status = http.StatusOK
-			} else {
-				response.Status = http.StatusInternalServerError
-			}
+		accessToken, tokenErr := generateToken(accountData["_id"].(bson.ObjectId), accountData)
+		if tokenErr == nil {
+			response.Body["accessToken"] = accessToken
+			response.Status = http.StatusOK
 		} else {
-			response.Status = http.StatusForbidden
+			response.Status = http.StatusInternalServerError
 		}
 	} else {
-		response.Status = http.StatusBadRequest
+		response.Status = http.StatusForbidden
 	}
 	return
-}
-
-var checkAuthRequirements = func() {
-
 }
 
 var GetPermissions = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (permissions map[string]bool, err utils.Error) {

@@ -194,3 +194,128 @@ func TestHandleSignUp(t *testing.T) {
 	})
 }
 
+func TestHandleLogin(t *testing.T) {
+
+	Convey("Should return bad request", t, func() {
+
+		var called bool
+		getAccountData = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (accountData map[string]interface{}) {
+			called = true
+			return
+		}
+
+		var message messages.Message
+		message.Body = make(map[string]interface{})
+
+		var requestWrapper messages.RequestWrapper
+		requestWrapper.Message = message
+
+		response, _ := HandleLogin(requestWrapper, &adapters.MongoAdapter{})
+
+		So(response.Status, ShouldEqual, http.StatusBadRequest)
+		So(called, ShouldBeFalse)
+	})
+
+	Convey("Should login with email", t, func() {
+
+		getAccountData = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (accountData map[string]interface{}) {
+			accountData = make(map[string]interface{})
+			// hased of 'zuhaha'
+			accountData["password"] = "$2a$10$wqvcYHiRvoCy5ZUurNz9wuokDH1DyXjfd8k6Hk4DSJKui76gx1yrO"
+			accountData["_id"] = bson.ObjectIdHex("564f1a28e63bce219e1cc745")
+			return
+		}
+
+		parameters := make(map[string][]string)
+		parameters["password"] = []string{"zuhaha"}
+		parameters["email"] = []string{"email@domain.com"}
+
+		var message messages.Message
+		message.Parameters = parameters
+
+		var requestWrapper messages.RequestWrapper
+		requestWrapper.Message = message
+
+		response, _ := HandleLogin(requestWrapper, &adapters.MongoAdapter{})
+		So(response.Status, ShouldEqual, http.StatusOK)
+	})
+
+	Convey("Should login with username", t, func() {
+
+		getAccountData = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (accountData map[string]interface{}) {
+			accountData = make(map[string]interface{})
+			// hased of 'zuhaha'
+			accountData["password"] = "$2a$10$wqvcYHiRvoCy5ZUurNz9wuokDH1DyXjfd8k6Hk4DSJKui76gx1yrO"
+			accountData["_id"] = bson.ObjectIdHex("564f1a28e63bce219e1cc745")
+			return
+		}
+
+		parameters := make(map[string][]string)
+		parameters["password"] = []string{"zuhaha"}
+		parameters["username"] = []string{"yesitsme"}
+
+		var message messages.Message
+		message.Parameters = parameters
+
+		var requestWrapper messages.RequestWrapper
+		requestWrapper.Message = message
+
+		response, _ := HandleLogin(requestWrapper, &adapters.MongoAdapter{})
+		So(response.Status, ShouldEqual, http.StatusOK)
+	})
+
+	Convey("Should return forbidden (password) error", t, func() {
+
+		getAccountData = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (accountData map[string]interface{}) {
+			accountData = make(map[string]interface{})
+			// hased of 'zuhaha'
+			accountData["password"] = "$2a$10$wqvcYHiRvoCy5ZUurNz9wuokDH1DyXjfd8k6Hk4DSJKui76gx1yrO"
+			accountData["_id"] = bson.ObjectIdHex("564f1a28e63bce219e1cc745")
+			return
+		}
+
+		parameters := make(map[string][]string)
+		parameters["password"] = []string{"notzuhaha"}
+		parameters["username"] = []string{"yesitsme"}
+
+		var message messages.Message
+		message.Parameters = parameters
+
+		var requestWrapper messages.RequestWrapper
+		requestWrapper.Message = message
+
+		response, _ := HandleLogin(requestWrapper, &adapters.MongoAdapter{})
+		So(response.Status, ShouldEqual, http.StatusForbidden)
+	})
+
+	Convey("Should return internal server error", t, func() {
+
+		getAccountData = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (accountData map[string]interface{}) {
+			accountData = make(map[string]interface{})
+			// hased of 'zuhaha'
+			accountData["password"] = "$2a$10$wqvcYHiRvoCy5ZUurNz9wuokDH1DyXjfd8k6Hk4DSJKui76gx1yrO"
+			accountData["_id"] = bson.ObjectIdHex("564f1a28e63bce219e1cc745")
+			return
+		}
+
+		generateToken  = func(userId bson.ObjectId, userData map[string]interface{}) (tokenString string, err error) {
+			err = errors.New("error")
+			return
+		}
+
+		parameters := make(map[string][]string)
+		parameters["password"] = []string{"zuhaha"}
+		parameters["username"] = []string{"yesitsme"}
+
+		var message messages.Message
+		message.Parameters = parameters
+
+		var requestWrapper messages.RequestWrapper
+		requestWrapper.Message = message
+
+		response, _ := HandleLogin(requestWrapper, &adapters.MongoAdapter{})
+		So(response.Status, ShouldEqual, http.StatusInternalServerError)
+	})
+
+}
+
