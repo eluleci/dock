@@ -39,7 +39,7 @@ var HandlePost = func (m *MongoAdapter, requestWrapper messages.RequestWrapper) 
 	}
 
 	response = make(map[string]interface{})
-	response["objectId"] = objectId
+	response["_id"] = objectId
 	response["createdAt"] = createdAt
 
 	return

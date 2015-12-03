@@ -30,37 +30,44 @@ var defaultPermissions = map[string]bool{
 
 var HandleSignUp = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (response messages.Message, err error) {
 
-	usernameArray, hasUsername := requestWrapper.Message.Body["username"]
-	emailArray, hasEmail := requestWrapper.Message.Body["email"]
+	_, hasUsername := requestWrapper.Message.Body["username"]
+	_, hasEmail := requestWrapper.Message.Body["email"]
 	password, hasPassword := requestWrapper.Message.Body["password"]
 
-	var username, email string
-	if hasUsername {
-		username = usernameArray.(string)
+	if !(hasEmail || hasUsername) || !hasPassword {
+		response.Status = http.StatusBadRequest
+		return
 	}
-	if hasEmail {
-		email = emailArray.(string)
-	}
-	accountData := getAccountData(requestWrapper, dbAdapter, username, email)
 
-	if accountData != nil {
+	var existingAccount map[string]interface{}
+	if hasUsername {
+		existingAccount = getAccountData(requestWrapper, dbAdapter)
+	} else if hasEmail {
+		existingAccount = getAccountData(requestWrapper, dbAdapter)
+	}
+
+	if existingAccount != nil {
 		response.Status = http.StatusConflict
 		return
 	}
 
-	if (hasEmail || hasUsername) && hasPassword {
-		hashedPassword, hashErr := bcrypt.GenerateFromPassword([]byte(password.(string)), bcrypt.DefaultCost)
-		if hashErr != nil {
-			err = hashErr
-			return
-		}
-		requestWrapper.Message.Body["password"] = string(hashedPassword)
-		response.Body, err = adapters.HandlePost(dbAdapter, requestWrapper)
+	hashedPassword, hashErr := bcrypt.GenerateFromPassword([]byte(password.(string)), bcrypt.DefaultCost)
+	if hashErr != nil {
+		err = hashErr
+		response.Status = http.StatusInternalServerError
+		return
+	}
+	requestWrapper.Message.Body["password"] = string(hashedPassword)
+
+	response.Body, err = adapters.HandlePost(dbAdapter, requestWrapper)
+	fmt.Println(response.Body)
+	accessToken, tokenErr := generateToken(response.Body["_id"].(bson.ObjectId), response.Body)
+	if tokenErr == nil {
+		response.Body["accessToken"] = accessToken
 		response.Status = http.StatusCreated
 	} else {
-		response.Status = http.StatusBadRequest
+		response.Status = http.StatusInternalServerError
 	}
-	// TODO generate Access Token
 	return
 }
 
@@ -73,15 +80,15 @@ var HandleLogin = func(requestWrapper messages.RequestWrapper, dbAdapter *adapte
 	if (hasEmail || hasUsername) && hasPassword {
 		password := passwordArray[0]
 
-		var username, email string
+		requestWrapper.Message.Body = make(map[string]interface{})
 		if len(usernameArray) > 0 {
-			username = usernameArray[0]
+			requestWrapper.Message.Body["username"] = usernameArray[0]
 		}
 		if len(emailArray) > 0 {
-			email = emailArray[0]
+			requestWrapper.Message.Body["email"] = emailArray[0]
 		}
 
-		accountData := getAccountData(requestWrapper, dbAdapter, username, email)
+		accountData := getAccountData(requestWrapper, dbAdapter)
 		existingPassword := accountData["password"].(string)
 
 		passwordError := bcrypt.CompareHashAndPassword([]byte(existingPassword), []byte(password))
@@ -89,7 +96,7 @@ var HandleLogin = func(requestWrapper messages.RequestWrapper, dbAdapter *adapte
 			delete(accountData, "password")
 			response.Body = accountData
 
-			accessToken, tokenErr := generateToken(accountData["_id"].(bson.ObjectId), username, email)
+			accessToken, tokenErr := generateToken(accountData["_id"].(bson.ObjectId), accountData)
 			if tokenErr == nil {
 				response.Body["accessToken"] = accessToken
 				response.Status = http.StatusOK
@@ -103,6 +110,10 @@ var HandleLogin = func(requestWrapper messages.RequestWrapper, dbAdapter *adapte
 		response.Status = http.StatusBadRequest
 	}
 	return
+}
+
+var checkAuthRequirements = func() {
+
 }
 
 var GetPermissions = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (permissions map[string]bool, err utils.Error) {
@@ -247,28 +258,26 @@ func verifyToken(tokenString string) (userData map[string]interface{}, err utils
 	return
 }
 
-func getAccountData(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter, username, email string) (accountData map[string]interface{}) {
+var getAccountData = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (accountData map[string]interface{}) {
 
 	var whereParams = make(map[string]interface{})
-	if username != "" {
+
+	if username, hasUsername := requestWrapper.Message.Body["username"]; hasUsername && username != "" {
 		paramUsername := make(map[string]string)
-		paramUsername["$eq"] = username
+		paramUsername["$eq"] = username.(string)
 		whereParams["username"] = paramUsername
 	}
-	if email != "" {
+	if email, hasEmail := requestWrapper.Message.Body["email"]; hasEmail && email != "" {
 		paramEmail := make(map[string]string)
-		paramEmail["$eq"] = email
+		paramEmail["$eq"] = email.(string)
 		whereParams["email"] = paramEmail
 	}
+
 	whereParamsJson, err := json.Marshal(whereParams)
 	if err != nil {
 		return
 	}
-
 	requestWrapper.Message.Parameters["where"] = []string{string(whereParamsJson)}
-	if err != nil {
-		return
-	}
 
 	results, fetchErr := adapters.HandleGet(dbAdapter, requestWrapper)
 	resultsAsMap := results["data"].([]map[string]interface{})
@@ -280,22 +289,23 @@ func getAccountData(requestWrapper messages.RequestWrapper, dbAdapter *adapters.
 	return
 }
 
-func generateToken(userId bson.ObjectId, username, email string) (tokenString string, err error) {
+var generateToken = func(userId bson.ObjectId, userData map[string]interface{}) (tokenString string, err error) {
 
 	token := jwt.New(jwt.SigningMethodHS256)
 
+	userTokenData := make(map[string]interface{})
+	userTokenData["userId"] = userId
+
+	if username, hasUsername := userData["username"]; hasUsername && username != "" {
+		userTokenData["username"] = username
+	}
+	if email, hasEmail := userData["email"]; hasEmail && email != "" {
+		userTokenData["email"] = email
+	}
+
 	token.Claims["ver"] = "0.1"
 	token.Claims["exp"] = time.Now().Add(time.Hour * 72).Unix()
-
-	userData := make(map[string]interface{})
-	userData["userId"] = userId
-	if len(username) > 0 {
-		userData["username"] = username
-	}
-	if len(email) > 0 {
-		userData["email"] = email
-	}
-	token.Claims["user"] = userData
+	token.Claims["user"] = userTokenData
 
 	tokenString, err = token.SignedString([]byte("SIGN_IN_KEY"))
 	return

@@ -1,6 +1,6 @@
 {
   "mongo": {
-    "address":  "104.155.74.28",
+    "address":  "localhost",
     "name":     "biddy-db"
   }
 }

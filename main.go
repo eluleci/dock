@@ -80,7 +80,7 @@ func main() {
 	go actors.RootActor.Run()
 
 	http.HandleFunc("/", handler)
-	http.ListenAndServe(":8080", nil)
+	http.ListenAndServe(":1707", nil)
 }
 
 func readConfig() (configuration config.Config, err *utils.Error) {

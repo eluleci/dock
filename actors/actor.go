@@ -33,6 +33,8 @@ type Actor struct {
 	adapter     *adapters.MongoAdapter
 }
 
+var RootActor Actor
+
 var CreateActor = func (res string, level int, parentInbox chan messages.RequestWrapper) (a Actor) {
 
 	var className string

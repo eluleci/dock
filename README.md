@@ -139,8 +139,6 @@ PUT /topics/564f1a28e63bce219e1cc745
 
 #### Delete object
 
-Only the provided fields will be updated. The other fields will remain same.
-
 **Request**
 
 ```
@@ -157,6 +155,8 @@ DELETE /topics/564f1a28e63bce219e1cc745
 
 #### Sign up with email
 
+**Request**
+
 ```
 POST /register
 {
@@ -167,11 +167,23 @@ POST /register
 
 #### Sign up with username
 
+**Request**
+
 ```
 POST /register
 {
 	"username": "johnybravo",
 	"password": "ihaveamazinghair"
+}
+```
+
+**Response**
+
+```
+{
+  "_id": "5660236795fc151444e53f69",
+  "accessToken": "eyJhbGciOi.eyJleHAiOjE0NDk0MDAyOTU.Xa1tUvYgI_YqdA",
+  "createdAt": 1449141095
 }
 ```
 
