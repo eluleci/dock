@@ -2,5 +2,9 @@
   "mongo": {
     "address":  "localhost",
     "name":     "biddy-db"
+  },
+  "facebook": {
+    "appId": "1002354526458218",
+    "appToken": "1002354526458218|j5aGV36GyRfmK0D-nE3eu3vtg1s"
   }
 }

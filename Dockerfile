@@ -3,10 +3,10 @@
 ########################
 
 # Build image:
-# docker build -t dock .
+# docker build -t eluleci/dock .
 
 # Run container
-# docker run --publish 6060:8080 --name Dock dock
+# docker run --publish 1707:8080 --name Dock dock
 
 # After running the container there will be an output like 'No 'dock-config.json' file found.' and container will exit.
 # Copy configuration file

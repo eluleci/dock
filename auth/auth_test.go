@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"fmt"
+	"github.com/eluleci/dock/config"
 )
 
 var _getAccountData = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (accountData map[string]interface{}, err *utils.Error) {
@@ -215,6 +216,12 @@ func TestHandleSignUp(t *testing.T) {
 
 		So(response.Status, ShouldEqual, http.StatusCreated)
 	})
+
+	config.SystemConfig = config.Config{}
+	config.SystemConfig.Facebook = map[string]string{
+		"appId": "someappid",
+		"appToken": "someAppToken",
+	}
 
 	Convey("Should fail creating account with Facebook", t, func() {
 

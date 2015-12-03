@@ -8,6 +8,12 @@ type Config struct {
 	 */
 	Mongo        map[string]string `json:"mongo,omitempty"`
 
+	/* Facebook configuration. Used for registration with Facebook account. Fields:
+	 * appId:		Facebook app id	(required)
+	 * appToken:	Facebook app token (required)
+	 */
+	Facebook     map[string]string `json:"facebook,omitempty"`
+
 }
 
 var SystemConfig Config

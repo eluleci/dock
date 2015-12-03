@@ -2,9 +2,7 @@ package main
 
 import (
 	"net/http"
-//	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2"
-	//	"github.com/gorilla/mux"
 	"github.com/eluleci/dock/config"
 	"github.com/eluleci/dock/actors"
 	"github.com/eluleci/dock/adapters"
@@ -13,8 +11,6 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"strings"
-//		"fmt"
-	//	"log"
 	"io"
 	"os"
 )
@@ -61,15 +57,16 @@ func handler(w http.ResponseWriter, r *http.Request) {
 func main() {
 
 	// reading and parsing configuration
-	config, configErr := readConfig()
+	c, configErr := readConfig()
 	if configErr != nil {
 		utils.Log("fatal", configErr.Message)
 		os.Exit(configErr.Code)
 	}
+	config.SystemConfig = c
 
 	// creating database instance
 	var dbErr *utils.Error
-	adapters.MongoDB, dbErr = connectToDB(config)
+	adapters.MongoDB, dbErr = connectToDB(config.SystemConfig)
 	if dbErr != nil {
 		utils.Log("fatal", dbErr.Message)
 		os.Exit(dbErr.Code)

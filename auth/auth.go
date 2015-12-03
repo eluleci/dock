@@ -12,6 +12,7 @@ import (
 	"github.com/eluleci/dock/utils"
 	"strings"
 	"io/ioutil"
+	"github.com/eluleci/dock/config"
 )
 
 const (
@@ -102,7 +103,11 @@ var createSocialAccount = func(requestWrapper messages.RequestWrapper, dbAdapter
 		return
 	}
 
-	appFacebookAccessToken := "1002354526458218|j5aGV36GyRfmK0D-nE3eu3vtg1s"
+	appFacebookAccessToken := config.SystemConfig.Facebook["appToken"]
+	if appFacebookAccessToken == "" {
+		err = &utils.Error{http.StatusInternalServerError, "Facebook information is not provided in server configuration."}
+		return
+	}
 
 	urlBuilder := []string{verificationEndpoint, "?access_token=", appFacebookAccessToken, "&input_token=", accessToken.(string)}
 	verificationUrl := strings.Join(urlBuilder, "");
