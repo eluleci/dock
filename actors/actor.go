@@ -90,7 +90,6 @@ func (a *Actor) Run() {
 				// if the resource of the message is this actor's resource
 
 				messageString, _ := json.Marshal(requestWrapper.Message)
-				utils.Log("debug", a.res + ": Received message")
 				utils.Log("debug", a.res + ": " + string(messageString))
 
 				response := handleRequest(a, requestWrapper)
@@ -124,6 +123,8 @@ var handleRequest = func(a *Actor, requestWrapper messages.RequestWrapper) (resp
 
 	var err *utils.Error
 	var isGranted bool
+
+	// TODO check for not allowed commands on resources. for ex: DELETE /topics, POST /users/123
 
 	isGranted, err = auth.IsGranted(requestWrapper, a.adapter)
 

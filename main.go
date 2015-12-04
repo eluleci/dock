@@ -17,6 +17,8 @@ import (
 
 func handler(w http.ResponseWriter, r *http.Request) {
 
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+
 	res := r.URL.Path
 	if (strings.Contains(res, ".ico")) {
 		utils.Log("info", "File request.")
@@ -26,7 +28,13 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
 	requestWrapper, parseReqErr := parseRequest(r)
 	if parseReqErr != nil {
-		http.Error(w, parseReqErr.Message, parseReqErr.Code)
+		bytes, err := json.Marshal(map[string]string{"message":parseReqErr.Message})
+		if err != nil {
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
+		w.WriteHeader(parseReqErr.Code)
+		io.WriteString(w, string(bytes))
+		return
 	}
 
 	responseChannel := make(chan messages.Message)
@@ -35,7 +43,6 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	actors.RootActor.Inbox <- requestWrapper
 
 	response := <-responseChannel
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	if response.Status != 0 {
 		w.WriteHeader(response.Status)
 	}
@@ -98,7 +105,7 @@ func connectToDB(config config.Config) (db *mgo.Database, err *utils.Error) {
 
 	address, hasAddress := config.Mongo["address"]
 	name, hasName := config.Mongo["name"]
-	if  !hasAddress || !hasName {
+	if !hasAddress || !hasName {
 		err = &utils.Error{http.StatusInternalServerError, "Database 'address' and 'name' must be specified in dock-config.json."};
 		return
 	}
@@ -125,11 +132,11 @@ func parseRequest(r *http.Request) (requestWrapper messages.RequestWrapper, err 
 	requestWrapper.Message.Headers = r.Header
 	requestWrapper.Message.Parameters = r.URL.Query()
 
-	rBody, readErr := ioutil.ReadAll(r.Body)
-	if readErr != nil {
-		readErr = &utils.Error{http.StatusInternalServerError, "Parsing request body failed."};
+	readErr := json.NewDecoder(r.Body).Decode(&requestWrapper.Message.Body)
+	if readErr != nil && readErr != io.EOF {
+		err = &utils.Error{http.StatusBadRequest, "Request body is not a valid json."}
+		return
 	}
-	json.Unmarshal(rBody, &requestWrapper.Message.Body)
 
 	return
 }
