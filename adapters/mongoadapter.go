@@ -9,8 +9,6 @@ import (
 	"time"
 	"strings"
 	"net/http"
-//	"fmt"
-	"fmt"
 )
 
 type MongoAdapter struct {
@@ -44,15 +42,14 @@ var HandlePost = func (m *MongoAdapter, requestWrapper messages.RequestWrapper) 
 	return
 }
 
-var HandleGetById = func (m *MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err error) {
+var HandleGetById = func (m *MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
 
 	message := requestWrapper.Message
 	id := message.Res[strings.LastIndex(message.Res, "/")+1:]
 	response = make(map[string]interface{})
 
-	err = m.Collection.FindId(bson.ObjectIdHex(id)).One(&response)
-	if err != nil {
-		utils.Log("fatal", "mongoadapter: Getting item with id failed: " + message.Res)
+	getErr := m.Collection.FindId(bson.ObjectIdHex(id)).One(&response)
+	if getErr != nil {
 		err = &utils.Error{http.StatusNotFound, "Item not found."};
 		response = nil
 		return
@@ -60,7 +57,7 @@ var HandleGetById = func (m *MongoAdapter, requestWrapper messages.RequestWrappe
 	return
 }
 
-var HandleGet = func (m *MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err error) {
+var HandleGet = func (m *MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
 
 	message := requestWrapper.Message
 
@@ -73,12 +70,9 @@ var HandleGet = func (m *MongoAdapter, requestWrapper messages.RequestWrapper) (
 		json.Unmarshal([]byte(message.Parameters["where"][0]), &whereParams)
 	}
 
-	err = m.Collection.Find(whereParams).All(&results)
-	if err != nil {
-		utils.Log("fatal", "Querying items failed")
-		fmt.Println(err)
+	findErr := m.Collection.Find(whereParams).All(&results)
+	if findErr != nil {
 		err = &utils.Error{http.StatusInternalServerError, "Querying items failed."};
-		response["message"] = "Database request failed."
 		return
 	}
 
@@ -90,16 +84,15 @@ var HandleGet = func (m *MongoAdapter, requestWrapper messages.RequestWrapper) (
 	return
 }
 
-var HandlePut = func (m *MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err error) {
+var HandlePut = func (m *MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
 
 	message := requestWrapper.Message
 	message.Body["updatedAt"] = int32(time.Now().Unix())
 	id := message.Res[strings.LastIndex(message.Res, "/")+1:]
 
 	objectToUpdate := make(map[string]interface{})
-	err = m.Collection.FindId(bson.ObjectIdHex(id)).One(&objectToUpdate)
-	if err != nil {
-		utils.Log("fatal", "Getting item with id failed")
+	findErr := m.Collection.FindId(bson.ObjectIdHex(id)).One(&objectToUpdate)
+	if findErr != nil {
 		err = &utils.Error{http.StatusNotFound, "Item not found."};
 		return
 	}
@@ -109,11 +102,9 @@ var HandlePut = func (m *MongoAdapter, requestWrapper messages.RequestWrapper) (
 		objectToUpdate[k] = v
 	}
 
-	err = m.Collection.UpdateId(bson.ObjectIdHex(id), objectToUpdate)
-	if err != nil {
-		utils.Log("fatal", "Updating item failed")
-		err = &utils.Error{http.StatusInternalServerError, "Database request failed."};
-		response["message"] = "Database request failed."
+	updateErr := m.Collection.UpdateId(bson.ObjectIdHex(id), objectToUpdate)
+	if updateErr != nil {
+		err = &utils.Error{http.StatusInternalServerError, "Update request to db failed."};
 		return
 	}
 
@@ -123,14 +114,13 @@ var HandlePut = func (m *MongoAdapter, requestWrapper messages.RequestWrapper) (
 	return
 }
 
-var HandleDelete = func (m *MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err error) {
+var HandleDelete = func (m *MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
 
 	message := requestWrapper.Message
 	id := message.Res[strings.LastIndex(message.Res, "/")+1:]
 
-	err = m.Collection.RemoveId(bson.ObjectIdHex(id))
-	if err != nil {
-		utils.Log("fatal", "Deleting item failed")
+	removeErr := m.Collection.RemoveId(bson.ObjectIdHex(id))
+	if removeErr != nil {
 		err = &utils.Error{http.StatusNotFound, "Item not found."};
 		return
 	}

@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"strings"
 	"net/http"
-	"fmt"
 )
 
 const (
@@ -35,7 +34,7 @@ type Actor struct {
 
 var RootActor Actor
 
-var CreateActor = func (res string, level int, parentInbox chan messages.RequestWrapper) (a Actor) {
+var CreateActor = func(res string, level int, parentInbox chan messages.RequestWrapper) (a Actor) {
 
 	var className string
 	if strings.EqualFold(res, ResourceLogin) || strings.EqualFold(res, ResourceRegister) {
@@ -81,36 +80,39 @@ func (a *Actor) Run() {
 		utils.Log("debug", a.res + ":  Stopped running.")
 	}()
 
-	utils.Log("debug", a.res + ":  Started running as class " + a.class)
+	utils.Log("debug", a.res + ": Started running")
 
 	for {
 		select {
 		case requestWrapper := <-a.Inbox:
 
-			messageString, _ := json.Marshal(requestWrapper.Message)
-			utils.Log("debug", a.res + ": Received message: " + string(messageString))
-
 			if requestWrapper.Res == a.res {
 				// if the resource of the message is this actor's resource
 
+				messageString, _ := json.Marshal(requestWrapper.Message)
+				utils.Log("debug", a.res + ": Received message")
+				utils.Log("debug", a.res + ": " + string(messageString))
+
 				response := handleRequest(a, requestWrapper)
 				a.checkAndSend(requestWrapper.Listener, response)
+				utils.Log("debug", "")
+
+				// TODO stop the actor if it belongs to an item and the item is deleted
+				// TODO stop the actor if it belongs to an item and the item doesn't exist
+				// TODO stop the actor if it belongs to an entity and 'get' returns an empty array (not sure though)
 
 			} else {
 				// if the resource belongs to a children actor
 				childRes := getChildRes(requestWrapper.Res, a.res)
 
 				actor, exists := a.children[childRes]
-				fmt.Println(exists)
 
 				if !exists {
 					// if children doesn't exists, create a child actor for the res
 					actor = CreateActor(childRes, a.level + 1, a.Inbox)
-					fmt.Println(actor.res)
 					go actor.Run()
 					a.children[childRes] = actor
 				}
-				fmt.Println(actor.res)
 				//   forward message to the children actor
 				actor.Inbox <- requestWrapper
 			}
@@ -120,50 +122,36 @@ func (a *Actor) Run() {
 
 var handleRequest = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message) {
 
-	permissions, permissionErr := auth.GetPermissions(requestWrapper, a.adapter)
+	var err *utils.Error
+	var isGranted bool
 
-	var err error
-	if permissionErr.Code != 0 {
-		response.Status = permissionErr.Code
+	isGranted, err = auth.IsGranted(requestWrapper, a.adapter)
+
+	if err != nil {
+		// skip below. status code is set at the end of the function
+	} else if !isGranted {
+		err = &utils.Error{http.StatusUnauthorized, "Unauthorized."}
 	} else if strings.EqualFold(requestWrapper.Message.Command, "get") {
-		if permissions["get"] || permissions["query"] {
-			response, err = handleGet(a, requestWrapper)
-		} else {
-			response.Status = http.StatusUnauthorized
-		}
+		response, err = handleGet(a, requestWrapper)
 	} else if strings.EqualFold(requestWrapper.Message.Command, "post") {
-		if permissions["create"] {
-			response, err = handlePost(a, requestWrapper)
-		} else {
-			response.Status = http.StatusUnauthorized
-		}
+		response, err = handlePost(a, requestWrapper)
 	} else if strings.EqualFold(requestWrapper.Message.Command, "put") {
-		if permissions["update"] {
-			response, err = handlePut(a, requestWrapper)
-		} else {
-			response.Status = http.StatusUnauthorized
-		}
+		response, err = handlePut(a, requestWrapper)
 	} else if strings.EqualFold(requestWrapper.Message.Command, "delete") {
-		if permissions["delete"] {
-			response, err = handleDelete(a, requestWrapper)
-		} else {
-			response.Status = http.StatusUnauthorized
-		}
+		response, err = handleDelete(a, requestWrapper)
 	}
 
 	if err != nil && response.Status == 0 {
-		response.Status = (err.(*utils.Error)).Code
+		response.Status = err.Code
 		response.Body = make(map[string]interface{})
-		response.Body["message"] = (err.(*utils.Error)).Message
+		response.Body["message"] = err.Message
 	}
 	return
 }
 
-var handleGet = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
+var handleGet = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err *utils.Error) {
 
-	if strings.EqualFold(a.res, ResourceLogin) {                        // login request
-		response, err = auth.HandleLogin(requestWrapper, a.adapter)
-	} else if strings.EqualFold(a.actorType, ActorTypeObject) {         // get object by id
+	if strings.EqualFold(a.actorType, ActorTypeObject) {         // get object by id
 		response.Body, err = adapters.HandleGetById(a.adapter, requestWrapper)
 	} else if strings.EqualFold(a.actorType, ActorTypeCollection) {        // query objects
 		response.Body, err = adapters.HandleGet(a.adapter, requestWrapper)
@@ -175,21 +163,24 @@ var handleGet = func(a *Actor, requestWrapper messages.RequestWrapper) (response
 	return
 }
 
-var handlePost = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
-	if strings.EqualFold(a.res, ResourceTypeUsers) {                    // post on users not allowed
-		response.Status = http.StatusMethodNotAllowed
-	} else if strings.EqualFold(a.res, ResourceRegister) {              // sign up request
+var handlePost = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err *utils.Error) {
+
+	if strings.EqualFold(a.res, ResourceRegister) {                                // sign up request
 		response, err = auth.HandleSignUp(requestWrapper, a.adapter)
-	} else if strings.EqualFold(a.actorType, ActorTypeCollection) {       // create object request
+	} else if strings.EqualFold(a.res, ResourceLogin) {                            // login request
+		response, err = auth.HandleLogin(requestWrapper, a.adapter)
+	} else if strings.EqualFold(a.res, ResourceTypeUsers) {                        // post on users not allowed
+		response.Status = http.StatusMethodNotAllowed
+	} else if strings.EqualFold(a.actorType, ActorTypeCollection) {                // create object request
 		response.Body, err = adapters.HandlePost(a.adapter, requestWrapper)
 		response.Status = http.StatusCreated
-	} else if strings.EqualFold(a.actorType, ActorTypeObject) {         // post on objects are not allowed
+	} else if strings.EqualFold(a.actorType, ActorTypeObject) {                    // post on objects are not allowed
 		response.Status = http.StatusBadRequest
 	}
 	return
 }
 
-var handlePut = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
+var handlePut = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err *utils.Error) {
 
 	if strings.EqualFold(a.actorType, ActorTypeCollection) {            // put on resources are not allowed
 		response.Status = http.StatusBadRequest
@@ -199,7 +190,7 @@ var handlePut = func(a *Actor, requestWrapper messages.RequestWrapper) (response
 	return
 }
 
-var handleDelete = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
+var handleDelete = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err *utils.Error) {
 
 	if strings.EqualFold(a.actorType, ActorTypeCollection) {            // delete on resources are not allowed
 		response.Status = http.StatusBadRequest

@@ -13,13 +13,28 @@ import (
 	"strings"
 	"io/ioutil"
 	"github.com/eluleci/dock/config"
-	"fmt"
 )
 
 const (
 	ResourceRegister = "/register"
 	ResourceLogin = "/login"
 )
+
+var commandPermissionMap = map[string]map[string]bool{
+	"get": {
+		"get": true,
+		"query": true,
+	},
+	"post": {
+		"create": true,
+	},
+	"put": {
+		"update": true,
+	},
+	"delete": {
+		"delete": true,
+	},
+};
 
 var facebookTokenVerificationEndpoint = "https://graph.facebook.com/debug_token"
 var googleTokenVerificationEndpoint = "https://www.googleapis.com/oauth2/v3/tokeninfo?id_token="
@@ -136,7 +151,6 @@ var handleFacebookAuth = func(requestWrapper messages.RequestWrapper, dbAdapter 
 		return
 	}
 	responseBodyAsMap := responseBody.(map[string]interface{})
-	fmt.Println(responseBodyAsMap)
 
 	tokenInfo, hasTokenInfo := responseBodyAsMap["data"]
 	if !hasTokenInfo {
@@ -250,22 +264,13 @@ var handleGoogleAuth = func(requestWrapper messages.RequestWrapper, dbAdapter *a
 
 var HandleLogin = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (response messages.Message, err *utils.Error) {
 
-	emailArray, hasEmail := requestWrapper.Message.Parameters["email"]
-	usernameArray, hasUsername := requestWrapper.Message.Parameters["username"]
-	passwordArray, hasPassword := requestWrapper.Message.Parameters["password"]
+	_, hasEmail := requestWrapper.Message.Body["email"]
+	_, hasUsername := requestWrapper.Message.Body["username"]
+	password, hasPassword := requestWrapper.Message.Body["password"]
 
 	if !(hasEmail || hasUsername) || !hasPassword {
-		response.Status = http.StatusBadRequest
+		err = &utils.Error{http.StatusBadRequest, "Login request must contain username or email, and password."}
 		return
-	}
-	password := passwordArray[0]
-
-	// adding username or email to request wrapper to get account data
-	requestWrapper.Message.Body = make(map[string]interface{})
-	if hasUsername {
-		requestWrapper.Message.Body["username"] = usernameArray[0]
-	} else if hasEmail {
-		requestWrapper.Message.Body["email"] = emailArray[0]
 	}
 
 	accountData, getAccountErr := getAccountData(requestWrapper, dbAdapter)
@@ -278,17 +283,16 @@ var HandleLogin = func(requestWrapper messages.RequestWrapper, dbAdapter *adapte
 	}
 	existingPassword := accountData["password"].(string)
 
-	passwordError := bcrypt.CompareHashAndPassword([]byte(existingPassword), []byte(password))
+	passwordError := bcrypt.CompareHashAndPassword([]byte(existingPassword), []byte(password.(string)))
 	if passwordError == nil {
 		delete(accountData, "password")
 		response.Body = accountData
 
-		accessToken, tokenErr := generateToken(accountData["_id"].(bson.ObjectId), accountData)
-		if tokenErr == nil {
+		var accessToken string
+		accessToken, err = generateToken(accountData["_id"].(bson.ObjectId), accountData)
+		if err == nil {
 			response.Body["accessToken"] = accessToken
 			response.Status = http.StatusOK
-		} else {
-			response.Status = http.StatusInternalServerError
 		}
 	} else {
 		response.Status = http.StatusUnauthorized
@@ -296,47 +300,51 @@ var HandleLogin = func(requestWrapper messages.RequestWrapper, dbAdapter *adapte
 	return
 }
 
-var GetPermissions = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (permissions map[string]bool, err utils.Error) {
+var IsGranted = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (isGranted bool, err *utils.Error) {
+
+	var permissions map[string]bool
 
 	res := requestWrapper.Res
 	if strings.EqualFold(res, ResourceLogin) || strings.EqualFold(res, ResourceRegister) {
-		permissions = defaultPermissions
+		isGranted = true
 		return
 	}
 
-	roles, authErr := getRolesOfUser(requestWrapper)
-
-	if authErr.Code != 0 {
-		err = utils.Error{http.StatusInternalServerError, ""}
+	var roles []string
+	roles, err = getRolesOfUser(requestWrapper)
+	if err != nil {
 		return
 	}
 
-	var pErr error
 	if strings.Count(requestWrapper.Res, "/") == 1 {
-		permissions, pErr = getPermissionsOnResources(roles, requestWrapper)
+		permissions, err = getPermissionsOnResources(roles, requestWrapper)
 	} else if strings.Count(requestWrapper.Res, "/") == 2 {
-		permissions, pErr = getPermissionsOnObject(roles, requestWrapper, dbAdapter)
+		permissions, err = getPermissionsOnObject(roles, requestWrapper, dbAdapter)
 	} else {
 		// TODO handle this resources
 		//		fmt.Println("ERROR: auth.go.GetPermissions(): Count of the / is more than 2: " + requestWrapper.Res)
-		err = utils.Error{http.StatusBadRequest, ""}
+		err = &utils.Error{http.StatusBadRequest, ""}
 	}
 
-	if pErr != nil {
-		err = utils.Error{http.StatusInternalServerError, ""}
+	for k, _ := range commandPermissionMap[strings.ToLower(requestWrapper.Message.Command)] {
+		if permissions[k] {
+			isGranted = true
+			break
+		}
 	}
 
 	return
 }
 
-func getRolesOfUser(requestWrapper messages.RequestWrapper) (roles []string, err utils.Error) {
+func getRolesOfUser(requestWrapper messages.RequestWrapper) (roles []string, err *utils.Error) {
 	// TODO get roles recursively. (inherited roles)
 
 	dbAdapter := &adapters.MongoAdapter{adapters.MongoDB.C("users")}
-	userDataFromToken, tokenErr := extractUserFromRequest(requestWrapper)
 
-	if tokenErr.Code != 0 {
-		err = tokenErr
+	var userDataFromToken map[string]interface{}
+	userDataFromToken, err = extractUserFromRequest(requestWrapper)
+
+	if err != nil {
 		return
 	}
 
@@ -348,11 +356,13 @@ func getRolesOfUser(requestWrapper messages.RequestWrapper) (roles []string, err
 		m.Res = "/users/" + userId
 		rw.Message = m
 
-		user, getErr := adapters.HandleGetById(dbAdapter, rw)
-		if getErr != nil {
-			err = utils.Error{800, ""}
+		var user map[string]interface{}
+		user, err = adapters.HandleGetById(dbAdapter, rw)
+		if err != nil {
 			return
-		} else if user["_roles"] != nil {
+		}
+
+		if user["_roles"] != nil {
 			for _, r := range user["_roles"].([]interface{}) {
 				roles = append(roles, "role:" + r.(string))
 			}
@@ -364,7 +374,7 @@ func getRolesOfUser(requestWrapper messages.RequestWrapper) (roles []string, err
 	return
 }
 
-func extractUserFromRequest(requestWrapper messages.RequestWrapper) (user map[string]interface{}, err utils.Error) {
+func extractUserFromRequest(requestWrapper messages.RequestWrapper) (user map[string]interface{}, err *utils.Error) {
 
 	authHeaders := requestWrapper.Message.Headers["Authorization"]
 	if authHeaders != nil && len(authHeaders) > 0 {
@@ -374,12 +384,11 @@ func extractUserFromRequest(requestWrapper messages.RequestWrapper) (user map[st
 	return
 }
 
-func getPermissionsOnObject(roles []string, requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (permissions map[string]bool, err error) {
+func getPermissionsOnObject(roles []string, requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (permissions map[string]bool, err *utils.Error) {
 
-	userData, getErr := adapters.HandleGetById(dbAdapter, requestWrapper)
-
-	if getErr != nil {
-		err = getErr
+	var userData map[string]interface{}
+	userData, err = adapters.HandleGetById(dbAdapter, requestWrapper)
+	if err != nil {
 		return
 	}
 
@@ -406,7 +415,7 @@ func getPermissionsOnObject(roles []string, requestWrapper messages.RequestWrapp
 	return
 }
 
-func getPermissionsOnResources(roles []string, requestWrapper messages.RequestWrapper) (permissions map[string]bool, err error) {
+func getPermissionsOnResources(roles []string, requestWrapper messages.RequestWrapper) (permissions map[string]bool, err *utils.Error) {
 
 	// TODO get class type permissions and return them
 	permissions = map[string]bool{
@@ -417,18 +426,18 @@ func getPermissionsOnResources(roles []string, requestWrapper messages.RequestWr
 	return
 }
 
-func verifyToken(tokenString string) (userData map[string]interface{}, err utils.Error) {
+func verifyToken(tokenString string) (userData map[string]interface{}, err *utils.Error) {
 
 	token, tokenErr := jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
 		return []byte("SIGN_IN_KEY"), nil
 	})
 
 	if tokenErr != nil {
-		err = utils.Error{http.StatusInternalServerError, "Parsing token failed"}
+		err = &utils.Error{http.StatusInternalServerError, "Parsing token failed."}
 	}
 
 	if !token.Valid {
-		err = utils.Error{http.StatusUnauthorized, "Token is not valid"}
+		err = &utils.Error{http.StatusUnauthorized, "Token is not valid."}
 	}
 
 	userData = token.Claims["user"].(map[string]interface{})
@@ -479,7 +488,7 @@ var getAccountData = func(requestWrapper messages.RequestWrapper, dbAdapter *ada
 	return
 }
 
-var generateToken = func(userId bson.ObjectId, userData map[string]interface{}) (tokenString string, err error) {
+var generateToken = func(userId bson.ObjectId, userData map[string]interface{}) (tokenString string, err *utils.Error) {
 
 	token := jwt.New(jwt.SigningMethodHS256)
 
@@ -497,7 +506,11 @@ var generateToken = func(userId bson.ObjectId, userData map[string]interface{}) 
 	token.Claims["exp"] = time.Now().Add(time.Hour * 72).Unix()
 	token.Claims["user"] = userTokenData
 
-	tokenString, err = token.SignedString([]byte("SIGN_IN_KEY"))
+	var signErr error
+	tokenString, signErr = token.SignedString([]byte("SIGN_IN_KEY"))
+	if signErr != nil {
+		err = &utils.Error{http.StatusInternalServerError, "Generating token failed."}
+	}
 	return
 }
 

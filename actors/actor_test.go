@@ -17,19 +17,19 @@ var _handleRequest = func(a *Actor, requestWrapper messages.RequestWrapper) (res
 	return
 }
 
-var _handleGet = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
+var _handleGet = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err *utils.Error) {
 	return
 }
 
-var _handlePost = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
+var _handlePost = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err *utils.Error) {
 	return
 }
 
-var _handlePut = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
+var _handlePut = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err *utils.Error) {
 	return
 }
 
-var _handleDelete = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
+var _handleDelete = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err *utils.Error) {
 	return
 }
 
@@ -163,30 +163,38 @@ func TestCreateActor(t *testing.T) {
 
 func TestHandleRequest(t *testing.T) {
 
+	isGrantedFuncThatReturnsTrue := func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (isGranted bool, err *utils.Error) {
+		isGranted = true
+		return
+	}
+
+	isGrantedFuncThatReturnsFalse := func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (isGranted bool, err *utils.Error) {
+		isGranted = false
+		return
+	}
+
 	resetFunctions()
 	Convey("Should call auth.GetPermissions", t, func() {
 
-		var getPermissionsCalled bool
-		auth.GetPermissions = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (permissions map[string]bool, err utils.Error) {
-			getPermissionsCalled = true
+		var called bool
+		auth.IsGranted = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (isGranted bool, err *utils.Error) {
+			called = true
 			return
 		}
 
 		handleRequest(&Actor{}, messages.RequestWrapper{})
-		So(getPermissionsCalled, ShouldBeTrue)
-
+		So(called, ShouldBeTrue)
 	})
 
 	Convey("Should return permission error", t, func() {
 
-		auth.GetPermissions = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (permissions map[string]bool, err utils.Error) {
-			err = utils.Error{http.StatusInternalServerError, ""}
+		auth.IsGranted = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (isGranted bool, err *utils.Error) {
+			err = &utils.Error{http.StatusInternalServerError, ""}
 			return
 		}
 
 		response := handleRequest(&Actor{}, messages.RequestWrapper{})
 		So(response.Status, ShouldEqual, http.StatusInternalServerError)
-
 	})
 
 	/////////////////////////
@@ -195,14 +203,10 @@ func TestHandleRequest(t *testing.T) {
 	resetFunctions()
 	Convey("Should call handleGet", t, func() {
 
-		auth.GetPermissions = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (permissions map[string]bool, err utils.Error) {
-			permissions = map[string]bool{"create": true, "query": true, "get": true, "update": true, "delete": true, }
-			return
-		}
+		auth.IsGranted = isGrantedFuncThatReturnsTrue
 
 		var called bool
-		handleGet = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
-
+		handleGet = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err *utils.Error) {
 			called = true
 			return
 		}
@@ -220,10 +224,7 @@ func TestHandleRequest(t *testing.T) {
 
 	Convey("Should return Authorization error for GET", t, func() {
 
-		auth.GetPermissions = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (permissions map[string]bool, err utils.Error) {
-			permissions = map[string]bool{"create": true, "update": true, "delete": true, }
-			return
-		}
+		auth.IsGranted = isGrantedFuncThatReturnsFalse
 
 		var m messages.Message
 		m.Command = "get"
@@ -241,13 +242,10 @@ func TestHandleRequest(t *testing.T) {
 	/////////////////////////
 	Convey("Should call handlePost", t, func() {
 
-		auth.GetPermissions = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (permissions map[string]bool, err utils.Error) {
-			permissions = map[string]bool{"create": true, "query": true, "get": true, "update": true, "delete": true, }
-			return
-		}
+		auth.IsGranted = isGrantedFuncThatReturnsTrue
 
 		var called bool
-		handlePost = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
+		handlePost = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err *utils.Error) {
 			called = true
 			return
 		}
@@ -264,10 +262,7 @@ func TestHandleRequest(t *testing.T) {
 
 	Convey("Should return Authorization error for POST", t, func() {
 
-		auth.GetPermissions = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (permissions map[string]bool, err utils.Error) {
-			permissions = map[string]bool{"query": true, "get": true, "update": true, "delete": true, }
-			return
-		}
+		auth.IsGranted = isGrantedFuncThatReturnsFalse
 
 		var m messages.Message
 		m.Command = "post"
@@ -285,13 +280,10 @@ func TestHandleRequest(t *testing.T) {
 	/////////////////////////
 	Convey("Should call handlePut", t, func() {
 
-		auth.GetPermissions = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (permissions map[string]bool, err utils.Error) {
-			permissions = map[string]bool{"create": true, "query": true, "get": true, "update": true, "delete": true, }
-			return
-		}
+		auth.IsGranted = isGrantedFuncThatReturnsTrue
 
 		var called bool
-		handlePut = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
+		handlePut = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err *utils.Error) {
 			called = true
 			return
 		}
@@ -307,10 +299,7 @@ func TestHandleRequest(t *testing.T) {
 
 	Convey("Should return Authorization error for PUT", t, func() {
 
-		auth.GetPermissions = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (permissions map[string]bool, err utils.Error) {
-			permissions = map[string]bool{"create": true, "query": true, "get": true, "delete": true, }
-			return
-		}
+		auth.IsGranted = isGrantedFuncThatReturnsFalse
 
 		var m messages.Message
 		m.Command = "put"
@@ -327,13 +316,10 @@ func TestHandleRequest(t *testing.T) {
 	/////////////////////////
 	Convey("Should call handleDelete", t, func() {
 
-		auth.GetPermissions = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (permissions map[string]bool, err utils.Error) {
-			permissions = map[string]bool{"create": true, "query": true, "get": true, "update": true, "delete": true, }
-			return
-		}
+		auth.IsGranted = isGrantedFuncThatReturnsTrue
 
 		var called bool
-		handleDelete = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
+		handleDelete = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err *utils.Error) {
 			called = true
 			return
 		}
@@ -349,12 +335,9 @@ func TestHandleRequest(t *testing.T) {
 
 	Convey("Should call handleDelete and return error", t, func() {
 
-		auth.GetPermissions = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (permissions map[string]bool, err utils.Error) {
-			permissions = map[string]bool{"create": true, "query": true, "get": true, "update": true, "delete": true, }
-			return
-		}
+		auth.IsGranted = isGrantedFuncThatReturnsTrue
 
-		handleDelete = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err error) {
+		handleDelete = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err *utils.Error) {
 			err = &utils.Error{http.StatusNotFound, "Item not found."};
 			return
 		}
@@ -370,10 +353,7 @@ func TestHandleRequest(t *testing.T) {
 
 	Convey("Should return Authorization error for DELETE", t, func() {
 
-		auth.GetPermissions = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (permissions map[string]bool, err utils.Error) {
-			permissions = map[string]bool{"create": true, "query": true, "get": true, "update": true, }
-			return
-		}
+		auth.IsGranted = isGrantedFuncThatReturnsFalse
 
 		var m messages.Message
 		m.Command = "delete"
@@ -399,7 +379,7 @@ func TestHandleGet(t *testing.T) {
 
 		var actor Actor
 		actor.res = ResourceLogin
-		_, err := handleGet(&actor, messages.RequestWrapper{})
+		_, err := handlePost(&actor, messages.RequestWrapper{})
 		So(err, ShouldBeNil)
 		So(called, ShouldBeTrue)
 
@@ -409,7 +389,7 @@ func TestHandleGet(t *testing.T) {
 	Convey("Should call adapters.HandleGetById", t, func() {
 
 		var called bool
-		adapters.HandleGetById = func(m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err error) {
+		adapters.HandleGetById = func(m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
 			called = true
 			return
 		}
@@ -426,7 +406,7 @@ func TestHandleGet(t *testing.T) {
 	Convey("Should call adapters.HandleGet", t, func() {
 
 		var called bool
-		adapters.HandleGet = func(m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err error) {
+		adapters.HandleGet = func(m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
 			called = true
 			return
 		}
@@ -518,7 +498,7 @@ func TestHandlePut(t *testing.T) {
 		actor.actorType = ActorTypeObject
 
 		var called bool
-		adapters.HandlePut = func(m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err error) {
+		adapters.HandlePut = func(m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
 			called = true
 			return
 		}
@@ -547,7 +527,7 @@ func TestHandleDelete(t *testing.T) {
 		actor.actorType = ActorTypeObject
 
 		var called bool
-		adapters.HandleDelete = func(m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err error) {
+		adapters.HandleDelete = func(m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
 			called = true
 			return
 		}

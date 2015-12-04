@@ -29,8 +29,6 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, parseReqErr.Message, parseReqErr.Code)
 	}
 
-	utils.Log("info", "HTTP: Received request: "+r.Method)
-
 	responseChannel := make(chan messages.Message)
 	requestWrapper.Listener = responseChannel
 

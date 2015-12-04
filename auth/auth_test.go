@@ -7,7 +7,6 @@ import (
 	"github.com/eluleci/dock/messages"
 	"gopkg.in/mgo.v2/bson"
 	"net/http"
-	"errors"
 	"github.com/eluleci/dock/utils"
 	"net/http/httptest"
 	"net/url"
@@ -110,7 +109,7 @@ func TestHandleSignUp(t *testing.T) {
 		}
 
 		var called bool
-		generateToken  = func(userId bson.ObjectId, userData map[string]interface{}) (tokenString string, err error) {
+		generateToken  = func(userId bson.ObjectId, userData map[string]interface{}) (tokenString string, err *utils.Error) {
 			called = true
 			err = &utils.Error{http.StatusConflict, "Exists."}
 			return
@@ -136,8 +135,8 @@ func TestHandleSignUp(t *testing.T) {
 			return
 		}
 
-		generateToken  = func(userId bson.ObjectId, userData map[string]interface{}) (tokenString string, err error) {
-			err = errors.New("error")
+		generateToken  = func(userId bson.ObjectId, userData map[string]interface{}) (tokenString string, err *utils.Error) {
+			err = &utils.Error{http.StatusInternalServerError, "Generating token failed."}
 			return
 		}
 
@@ -220,7 +219,7 @@ func TestHandleSignUp(t *testing.T) {
 			return
 		}
 
-		generateToken  = func(userId bson.ObjectId, userData map[string]interface{}) (tokenString string, err error) {
+		generateToken  = func(userId bson.ObjectId, userData map[string]interface{}) (tokenString string, err *utils.Error) {
 			tokenString = ""
 			return
 		}
@@ -662,9 +661,9 @@ func TestHandleLogin(t *testing.T) {
 		var requestWrapper messages.RequestWrapper
 		requestWrapper.Message = message
 
-		response, _ := HandleLogin(requestWrapper, &adapters.MongoAdapter{})
+		_, err := HandleLogin(requestWrapper, &adapters.MongoAdapter{})
 
-		So(response.Status, ShouldEqual, http.StatusBadRequest)
+		So(err.Code, ShouldEqual, http.StatusBadRequest)
 		So(called, ShouldBeFalse)
 	})
 
@@ -678,17 +677,17 @@ func TestHandleLogin(t *testing.T) {
 			return
 		}
 
-		parameters := make(map[string][]string)
-		parameters["password"] = []string{"zuhaha"}
-		parameters["email"] = []string{"email@domain.com"}
-
 		var message messages.Message
-		message.Parameters = parameters
+		message.Body = make(map[string]interface{})
+		message.Body["email"] = "email@domain.com"
+		message.Body["password"] = "zuhaha"
 
 		var requestWrapper messages.RequestWrapper
 		requestWrapper.Message = message
 
-		response, _ := HandleLogin(requestWrapper, &adapters.MongoAdapter{})
+		response, err := HandleLogin(requestWrapper, &adapters.MongoAdapter{})
+
+		So(err, ShouldBeNil)
 		So(response.Status, ShouldEqual, http.StatusOK)
 	})
 
@@ -702,12 +701,10 @@ func TestHandleLogin(t *testing.T) {
 			return
 		}
 
-		parameters := make(map[string][]string)
-		parameters["password"] = []string{"zuhaha"}
-		parameters["username"] = []string{"yesitsme"}
-
 		var message messages.Message
-		message.Parameters = parameters
+		message.Body = make(map[string]interface{})
+		message.Body["username"] = "someusername"
+		message.Body["password"] = "zuhaha"
 
 		var requestWrapper messages.RequestWrapper
 		requestWrapper.Message = message
@@ -726,12 +723,10 @@ func TestHandleLogin(t *testing.T) {
 			return
 		}
 
-		parameters := make(map[string][]string)
-		parameters["password"] = []string{"notzuhaha"}
-		parameters["username"] = []string{"yesitsme"}
-
 		var message messages.Message
-		message.Parameters = parameters
+		message.Body = make(map[string]interface{})
+		message.Body["email"] = "email@domain.com"
+		message.Body["password"] = "notzuhaha"
 
 		var requestWrapper messages.RequestWrapper
 		requestWrapper.Message = message
@@ -747,12 +742,10 @@ func TestHandleLogin(t *testing.T) {
 			return
 		}
 
-		parameters := make(map[string][]string)
-		parameters["password"] = []string{"zuhaha"}
-		parameters["username"] = []string{"yesitsme"}
-
 		var message messages.Message
-		message.Parameters = parameters
+		message.Body = make(map[string]interface{})
+		message.Body["email"] = "email@domain.com"
+		message.Body["password"] = "apasswordimpossibletofind"
 
 		var requestWrapper messages.RequestWrapper
 		requestWrapper.Message = message
@@ -761,7 +754,7 @@ func TestHandleLogin(t *testing.T) {
 		So(err.Code, ShouldEqual, http.StatusUnauthorized)
 	})
 
-	Convey("Should return internal server error", t, func() {
+	Convey("Should return token generation error", t, func() {
 
 		getAccountData = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (accountData map[string]interface{}, err *utils.Error) {
 			accountData = make(map[string]interface{})
@@ -771,23 +764,21 @@ func TestHandleLogin(t *testing.T) {
 			return
 		}
 
-		generateToken  = func(userId bson.ObjectId, userData map[string]interface{}) (tokenString string, err error) {
-			err = errors.New("error")
+		generateToken  = func(userId bson.ObjectId, userData map[string]interface{}) (tokenString string, err *utils.Error) {
+			err = &utils.Error{http.StatusInternalServerError, "Generating token failed."}
 			return
 		}
 
-		parameters := make(map[string][]string)
-		parameters["password"] = []string{"zuhaha"}
-		parameters["username"] = []string{"yesitsme"}
-
 		var message messages.Message
-		message.Parameters = parameters
+		message.Body = make(map[string]interface{})
+		message.Body["email"] = "email@domain.com"
+		message.Body["password"] = "zuhaha"
 
 		var requestWrapper messages.RequestWrapper
 		requestWrapper.Message = message
 
-		response, _ := HandleLogin(requestWrapper, &adapters.MongoAdapter{})
-		So(response.Status, ShouldEqual, http.StatusInternalServerError)
+		_, err := HandleLogin(requestWrapper, &adapters.MongoAdapter{})
+		So(err.Code, ShouldEqual, http.StatusInternalServerError)
 	})
 
 }
