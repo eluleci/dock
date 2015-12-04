@@ -5,7 +5,6 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/eluleci/dock/adapters"
 	"github.com/eluleci/dock/messages"
-	"os"
 	"gopkg.in/mgo.v2/bson"
 	"net/http"
 	"errors"
@@ -16,24 +15,49 @@ import (
 	"github.com/eluleci/dock/config"
 )
 
-var _getAccountData = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (accountData map[string]interface{}, err *utils.Error) {
-	return
+func setDefaultServer(mockServer *httptest.Server) {
+
+	// transport reroutes all traffic to the example server
+	transport := &http.Transport{
+		Proxy: func(req *http.Request) (*url.URL, error) {
+			return url.Parse(mockServer.URL)
+		},
+	}
+
+	// replacing real http client
+	httpClient = &http.Client{Transport: transport}
 }
 
-// keeping the original value of endpoint
-var _facebookTokenVerificationEndpoint = facebookTokenVerificationEndpoint
+func makeValidFacebookRequest() messages.RequestWrapper {
 
-func TestMain(m *testing.M) {
-	saveRealFunctions()
-	os.Exit(m.Run())
+	facebookData := make(map[string]interface{})
+	facebookData["id"] = "facebookuserid"
+	facebookData["accessToken"] = "facebookaccesstoken"
+
+	var message messages.Message
+	message.Body = make(map[string]interface{})
+	message.Body["facebook"] = facebookData
+
+	var requestWrapper messages.RequestWrapper
+	requestWrapper.Message = message
+
+	return requestWrapper
 }
 
-func saveRealFunctions() {
-	_getAccountData = getAccountData
-}
+func makeValidGoogleRequest() messages.RequestWrapper {
 
-func resetFunctions() {
-	getAccountData = _getAccountData
+	googleData := make(map[string]interface{})
+	googleData["id"] = "someid"
+	googleData["idToken"] = "someidtoken"
+
+	var message messages.Message
+	message.Body = make(map[string]interface{})
+	message.Body["google"] = googleData
+
+	var requestWrapper messages.RequestWrapper
+	requestWrapper.Message = message
+
+	return requestWrapper
 }
 
 func TestHandleSignUp(t *testing.T) {
@@ -223,16 +247,19 @@ func TestHandleSignUp(t *testing.T) {
 
 func TestFacebookRegistration(t *testing.T) {
 
+	// https needs to be changed to http for mock server to work
+	facebookTokenVerificationEndpoint = "http://graph.facebook.com/debug_token"
+
 	config.SystemConfig = config.Config{}
 	config.SystemConfig.Facebook = map[string]string{
-		"appId": "someappid",
-		"appToken": "someAppToken",
+		"appId": "facebookappid",
+		"appToken": "facebookapptoken",
 	}
 
-	Convey("Should fail creating account with Facebook", t, func() {
+	Convey("Should fail creating account with Facebook when id is missing", t, func() {
 
 		facebookData := make(map[string]interface{})
-		facebookData["id"] = "10153102991889648"
+		facebookData["accessToken"] = "facebookaccesstoken"
 
 		var message messages.Message
 		message.Body = make(map[string]interface{})
@@ -246,317 +273,203 @@ func TestFacebookRegistration(t *testing.T) {
 		So(err.Code, ShouldEqual, http.StatusBadRequest)
 	})
 
-	Convey("Should fail connecting to Facebook", t, func() {
+	Convey("Should fail creating account with Facebook when access token is missing", t, func() {
 
-		// Test server that always responds with 200 code, and specific payload
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		facebookData := make(map[string]interface{})
+		facebookData["id"] = "facebookuserid"
+
+		var message messages.Message
+		message.Body = make(map[string]interface{})
+		message.Body["facebook"] = facebookData
+
+		var requestWrapper messages.RequestWrapper
+		requestWrapper.Message = message
+
+		_, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
+
+		So(err.Code, ShouldEqual, http.StatusBadRequest)
+	})
+
+	Convey("Should fail creating account with Facebook when server configuration is missing", t, func() {
+
+		// removing google configuration
+		originalConfig := config.SystemConfig
+		config.SystemConfig.Facebook = nil
+
+		requestWrapper := makeValidFacebookRequest()
+		_, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
+
+		So(err.Code, ShouldEqual, http.StatusInternalServerError)
+
+		// revert back the original configuration
+		config.SystemConfig = originalConfig
+	})
+
+	Convey("Should fail when getting response from Facebook fails", t, func() {
+
+		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(500)
 		}))
-		defer server.Close()
+		defer mockServer.Close()
+		setDefaultServer(mockServer)
 
-		// Make a transport that reroutes all traffic to the example server
-		transport := &http.Transport{
-			Proxy: func(req *http.Request) (*url.URL, error) {
-				return url.Parse(server.URL)
-			},
-		}
-
-		// Make a http.Client with the transport
-		httpClient = &http.Client{Transport: transport}
-		facebookTokenVerificationEndpoint = "https://any.endpoint.not.correct"
-
-		facebookData := make(map[string]interface{})
-		facebookData["id"] = "10153102991889648"
-		facebookData["accessToken"] = "CAAOPotl9EWoBAPeLlTcQWAEUjZB3SoJG2UCHh1cpf2Q5"
-
-		var message messages.Message
-		message.Body = make(map[string]interface{})
-		message.Body["facebook"] = facebookData
-
-		var requestWrapper messages.RequestWrapper
-		requestWrapper.Message = message
-
+		requestWrapper := makeValidFacebookRequest()
 		_, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
 
-		So(err, ShouldNotBeNil)
 		So(err.Code, ShouldEqual, http.StatusInternalServerError)
 	})
 
-	// reverting endpoint back to the original value
-	facebookTokenVerificationEndpoint = _facebookTokenVerificationEndpoint
+	Convey("Should fail when parsing response from Facebook fails", t, func() {
 
-	Convey("Should fail parsing Facebook response", t, func() {
-
-		// Test server that always responds with 200 code, and specific payload
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(200)
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprintln(w, `"data": {"app_id": "1002354526458218","application": "Vurze","expires_at": 1449154800,"is_valid": true,"scopes": ["public_profile"],"user_id": "10153102991889648"}}`)
+			fmt.Fprintln(w, `{invalidjsonresponse`)
 		}))
-		defer server.Close()
+		defer mockServer.Close()
+		setDefaultServer(mockServer)
 
-		// Make a transport that reroutes all traffic to the example server
-		transport := &http.Transport{
-			Proxy: func(req *http.Request) (*url.URL, error) {
-				return url.Parse(server.URL)
-			},
-		}
-
-		// Make a http.Client with the transport
-		httpClient = &http.Client{Transport: transport}
-
-		facebookData := make(map[string]interface{})
-		facebookData["id"] = "10153102991889648"
-		facebookData["accessToken"] = "CAAOPotl9EWoBAPeLlTcQWAEUjZB3SoJG2UCHh1cpf2Q5"
-
-		var message messages.Message
-		message.Body = make(map[string]interface{})
-		message.Body["facebook"] = facebookData
-
-		var requestWrapper messages.RequestWrapper
-		requestWrapper.Message = message
-
+		requestWrapper := makeValidFacebookRequest()
 		_, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
 
-		So(err, ShouldNotBeNil)
 		So(err.Code, ShouldEqual, http.StatusInternalServerError)
 	})
 
-	Convey("Should fail finding required fields in Facebook response ", t, func() {
+	Convey("Should fail when Facebook's response is not as expected", t, func() {
 
-		// Test server that always responds with 200 code, and specific payload
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestWrapper := makeValidFacebookRequest()
+
+		// when 'data' is not at root
+		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(200)
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprintln(w, `{"data": {"app_id": "1002354526458218"}}`)
+			fmt.Fprintln(w, `{}`)
 		}))
-		defer server.Close()
-
-		// Make a transport that reroutes all traffic to the example server
-		transport := &http.Transport{
-			Proxy: func(req *http.Request) (*url.URL, error) {
-				return url.Parse(server.URL)
-			},
-		}
-
-		// Make a http.Client with the transport
-		httpClient = &http.Client{Transport: transport}
-
-		facebookData := make(map[string]interface{})
-		facebookData["id"] = "10153102991889648"
-		facebookData["accessToken"] = "CAAOPotl9EWoBAPeLlTcQWAEUjZB3SoJG2UCHh1cpf2Q5"
-
-		var message messages.Message
-		message.Body = make(map[string]interface{})
-		message.Body["facebook"] = facebookData
-
-		var requestWrapper messages.RequestWrapper
-		requestWrapper.Message = message
+		defer mockServer.Close()
+		setDefaultServer(mockServer)
 
 		_, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
 
-		So(err, ShouldNotBeNil)
+		So(err.Code, ShouldEqual, http.StatusInternalServerError)
+
+		// when required fields are not inside 'data'
+		mockServer2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(200)
+			fmt.Fprintln(w, `{"data": {}}`)
+		}))
+		defer mockServer2.Close()
+		setDefaultServer(mockServer2)
+
+		_, err2 := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
+
+		So(err2.Code, ShouldEqual, http.StatusInternalServerError)
+	})
+
+	Convey("Should fail when app ids don't match.", t, func() {
+
+		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(200)
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprintln(w, `{"data": {"app_id": "invalidfacebookappid", "user_id": "facebookuserid", "is_valid": true}}`)
+		}))
+		defer mockServer.Close()
+		setDefaultServer(mockServer)
+
+		requestWrapper := makeValidFacebookRequest()
+
+		_, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
+
 		So(err.Code, ShouldEqual, http.StatusInternalServerError)
 	})
 
-	Convey("Should return error if token doesn't match user", t, func() {
+	Convey("Should fail when user ids don't match.", t, func() {
 
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(200)
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprintln(w, `{"data": {"app_id": "someappid", "user_id": "123123123123123123", "is_valid": true}}`)
+			fmt.Fprintln(w, `{"data": {"app_id": "facebookappid", "user_id": "invalidfacebookuserid", "is_valid": true}}`)
 		}))
-		defer server.Close()
+		defer mockServer.Close()
+		setDefaultServer(mockServer)
 
-		// transport reroutes all traffic to the example server
-		transport := &http.Transport{
-			Proxy: func(req *http.Request) (*url.URL, error) {
-				return url.Parse(server.URL)
-			},
-		}
-
-		// Make a http.Client with the transport
-		httpClient = &http.Client{Transport: transport}
-		facebookTokenVerificationEndpoint = "http://graph.facebook.com/debug_token"
-
-		facebookData := make(map[string]interface{})
-		facebookData["id"] = "10153102991889648"
-		facebookData["accessToken"] = "CAAOPotl9EWoBAPeLlTcQWAEUjZB3SoJG2UCHh1cpf2Q5"
-
-		var message messages.Message
-		message.Body = make(map[string]interface{})
-		message.Body["facebook"] = facebookData
-
-		var requestWrapper messages.RequestWrapper
-		requestWrapper.Message = message
+		requestWrapper := makeValidFacebookRequest()
 
 		_, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
 
-		So(err, ShouldNotBeNil)
 		So(err.Code, ShouldEqual, http.StatusBadRequest)
 	})
 
-	Convey("Should return error if token is not valid", t, func() {
+	Convey("Should fail when token is not valid.", t, func() {
 
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(200)
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprintln(w, `{"data": {"app_id": "someappid", "user_id": "123123123123123123", "is_valid": true}}`)
+			fmt.Fprintln(w, `{"data": {"app_id": "facebookappid", "user_id": "facebookuserid", "is_valid": false}}`)
 		}))
-		defer server.Close()
+		defer mockServer.Close()
+		setDefaultServer(mockServer)
 
-		// Make a transport that reroutes all traffic to the example server
-		transport := &http.Transport{
-			Proxy: func(req *http.Request) (*url.URL, error) {
-				return url.Parse(server.URL)
-			},
-		}
-
-		// Make a http.Client with the transport
-		httpClient = &http.Client{Transport: transport}
-		facebookTokenVerificationEndpoint = "http://graph.facebook.com/debug_token"
-
-		facebookData := make(map[string]interface{})
-		facebookData["id"] = "10153102991889648"
-		facebookData["accessToken"] = "CAAOPotl9EWoBAPeLlTcQWAEUjZB3SoJG2UCHh1cpf2Q5"
-
-		var message messages.Message
-		message.Body = make(map[string]interface{})
-		message.Body["facebook"] = facebookData
-
-		var requestWrapper messages.RequestWrapper
-		requestWrapper.Message = message
+		requestWrapper := makeValidFacebookRequest()
 
 		_, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
 
-		So(err, ShouldNotBeNil)
 		So(err.Code, ShouldEqual, http.StatusBadRequest)
 	})
 
-	Convey("Should return existing account", t, func() {
+	Convey("Should create new account.", t, func() {
 
+		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(200)
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprintln(w, `{"data": {"app_id": "facebookappid", "user_id": "facebookuserid", "is_valid": true}}`)
+		}))
+		defer mockServer.Close()
+		setDefaultServer(mockServer)
+
+		var called bool
 		getAccountData = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (accountData map[string]interface{}, err *utils.Error) {
+			called = true
+			// returning nil account info
+			return
+		}
+
+		requestWrapper := makeValidFacebookRequest()
+		response, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
+
+		So(err, ShouldBeNil)
+		So(called, ShouldBeTrue)
+		So(response.Status, ShouldEqual, http.StatusCreated)
+	})
+
+	Convey("Should return existing account.", t, func() {
+
+		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(200)
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprintln(w, `{"data": {"app_id": "facebookappid", "user_id": "facebookuserid", "is_valid": true}}`)
+		}))
+		defer mockServer.Close()
+		setDefaultServer(mockServer)
+
+		var called bool
+		getAccountData = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (accountData map[string]interface{}, err *utils.Error) {
+			called = true
 			accountData = make(map[string]interface{})
 			accountData["_id"] = bson.ObjectIdHex("564f1a28e63bce219e1cc745")
+			// returning existing account
 			return
 		}
 
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(200)
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprintln(w, `{"data": {"app_id": "someappid", "user_id": "10153102991889648", "is_valid": true}}`)
-		}))
-		defer server.Close()
-
-		// Make a transport that reroutes all traffic to the example server
-		transport := &http.Transport{
-			Proxy: func(req *http.Request) (*url.URL, error) {
-				return url.Parse(server.URL)
-			},
-		}
-
-		// Make a http.Client with the transport
-		httpClient = &http.Client{Transport: transport}
-		facebookTokenVerificationEndpoint = "http://graph.facebook.com/debug_token"
-
-		facebookData := make(map[string]interface{})
-		facebookData["id"] = "10153102991889648"
-		facebookData["accessToken"] = "CAAOPotl9EWoBAPeLlTcQWAEUjZB3SoJG2UCHh1cpf2Q5"
-
-		var message messages.Message
-		message.Body = make(map[string]interface{})
-		message.Body["facebook"] = facebookData
-
-		var requestWrapper messages.RequestWrapper
-		requestWrapper.Message = message
-
+		requestWrapper := makeValidFacebookRequest()
 		response, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
 
 		So(err, ShouldBeNil)
-		So(response, ShouldNotBeNil)
-	})
-
-	Convey("Should create account with Facebook", t, func() {
-
-		getAccountData = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (accountData map[string]interface{}, err *utils.Error) {
-			return
-		}
-
-		adapters.HandlePost = func (m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
-			response = make(map[string]interface{})
-			response["_id"] = bson.ObjectIdHex("564f1a28e63bce219e1cc745")
-			return
-		}
-
-		// Test server that always responds with 200 code, and specific payload
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(200)
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprintln(w, `{"data": {"app_id": "someappid","application": "Vurze","expires_at": 1449154800,"is_valid": true,"scopes": ["public_profile"],"user_id": "10153102991889648"}}`)
-		}))
-		defer server.Close()
-
-		// Make a transport that reroutes all traffic to the example server
-		transport := &http.Transport{
-			Proxy: func(req *http.Request) (*url.URL, error) {
-				return url.Parse(server.URL)
-			},
-		}
-		_ = transport
-
-		// Make a http.Client with the transport
-		httpClient = &http.Client{Transport: transport}
-		facebookTokenVerificationEndpoint = "http://graph.facebook.com/debug_token"
-
-		facebookData := make(map[string]interface{})
-		facebookData["id"] = "10153102991889648"
-		facebookData["accessToken"] = "CAAOPotl9EWoBAPeLlTcQWAEUjZB3SoJG2UCHh1cpf2Q5"
-
-		var message messages.Message
-		message.Body = make(map[string]interface{})
-		message.Body["facebook"] = facebookData
-
-		var requestWrapper messages.RequestWrapper
-		requestWrapper.Message = message
-
-		response, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
-
-		So(err, ShouldBeNil)
+		So(called, ShouldBeTrue)
 		So(response.Status, ShouldEqual, http.StatusCreated)
 	})
 }
 
-func setDefaultServer(mockServer *httptest.Server) {
-
-	// transport reroutes all traffic to the example server
-	transport := &http.Transport{
-		Proxy: func(req *http.Request) (*url.URL, error) {
-			return url.Parse(mockServer.URL)
-		},
-	}
-
-	// replacing real http client
-	httpClient = &http.Client{Transport: transport}
-}
-
-func makeValidGoogleRequest() messages.RequestWrapper {
-
-	googleData := make(map[string]interface{})
-	googleData["id"] = "someid"
-	googleData["idToken"] = "someidtoken"
-
-	var message messages.Message
-	message.Body = make(map[string]interface{})
-	message.Body["google"] = googleData
-
-	var requestWrapper messages.RequestWrapper
-	requestWrapper.Message = message
-
-	return requestWrapper
-}
-
 func TestGoogleRegistration(t *testing.T) {
 
+	// https needs to be changed to http for mock server to work
 	googleTokenVerificationEndpoint = "http://mock.google.com"
 
 	// setting configuration to default
@@ -625,6 +538,21 @@ func TestGoogleRegistration(t *testing.T) {
 
 		requestWrapper := makeValidGoogleRequest()
 
+		_, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
+
+		So(err.Code, ShouldEqual, http.StatusInternalServerError)
+	})
+
+	Convey("Should fail when parsing response from Google fails", t, func() {
+
+		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(200)
+			fmt.Fprintln(w, `{invalidjsonresponse`)
+		}))
+		defer mockServer.Close()
+		setDefaultServer(mockServer)
+
+		requestWrapper := makeValidGoogleRequest()
 		_, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
 
 		So(err.Code, ShouldEqual, http.StatusInternalServerError)
@@ -716,282 +644,6 @@ func TestGoogleRegistration(t *testing.T) {
 		So(response.Status, ShouldEqual, http.StatusCreated)
 	})
 
-/*
-	Convey("Should fail connecting to Facebook", t, func() {
-
-		// Test server that always responds with 200 code, and specific payload
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(500)
-		}))
-		defer server.Close()
-
-		// Make a transport that reroutes all traffic to the example server
-		transport := &http.Transport{
-			Proxy: func(req *http.Request) (*url.URL, error) {
-				return url.Parse(server.URL)
-			},
-		}
-
-		// Make a http.Client with the transport
-		httpClient = &http.Client{Transport: transport}
-		facebookTokenVerificationEndpoint = "https://any.endpoint.not.correct"
-
-		facebookData := make(map[string]interface{})
-		facebookData["id"] = "10153102991889648"
-		facebookData["accessToken"] = "CAAOPotl9EWoBAPeLlTcQWAEUjZB3SoJG2UCHh1cpf2Q5"
-
-		var message messages.Message
-		message.Body = make(map[string]interface{})
-		message.Body["facebook"] = facebookData
-
-		var requestWrapper messages.RequestWrapper
-		requestWrapper.Message = message
-
-		_, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
-
-		So(err, ShouldNotBeNil)
-		So(err.Code, ShouldEqual, http.StatusInternalServerError)
-	})
-
-	Convey("Should fail parsing Facebook response", t, func() {
-
-		// Test server that always responds with 200 code, and specific payload
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(200)
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprintln(w, `"data": {"app_id": "1002354526458218","application": "Vurze","expires_at": 1449154800,"is_valid": true,"scopes": ["public_profile"],"user_id": "10153102991889648"}}`)
-		}))
-		defer server.Close()
-
-		// Make a transport that reroutes all traffic to the example server
-		transport := &http.Transport{
-			Proxy: func(req *http.Request) (*url.URL, error) {
-				return url.Parse(server.URL)
-			},
-		}
-
-		// Make a http.Client with the transport
-		httpClient = &http.Client{Transport: transport}
-
-		facebookData := make(map[string]interface{})
-		facebookData["id"] = "10153102991889648"
-		facebookData["accessToken"] = "CAAOPotl9EWoBAPeLlTcQWAEUjZB3SoJG2UCHh1cpf2Q5"
-
-		var message messages.Message
-		message.Body = make(map[string]interface{})
-		message.Body["facebook"] = facebookData
-
-		var requestWrapper messages.RequestWrapper
-		requestWrapper.Message = message
-
-		_, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
-
-		So(err, ShouldNotBeNil)
-		So(err.Code, ShouldEqual, http.StatusInternalServerError)
-	})
-
-	Convey("Should fail finding required fields in Facebook response ", t, func() {
-
-		// Test server that always responds with 200 code, and specific payload
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(200)
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprintln(w, `{"data": {"app_id": "1002354526458218"}}`)
-		}))
-		defer server.Close()
-
-		// Make a transport that reroutes all traffic to the example server
-		transport := &http.Transport{
-			Proxy: func(req *http.Request) (*url.URL, error) {
-				return url.Parse(server.URL)
-			},
-		}
-
-		// Make a http.Client with the transport
-		httpClient = &http.Client{Transport: transport}
-
-		facebookData := make(map[string]interface{})
-		facebookData["id"] = "10153102991889648"
-		facebookData["accessToken"] = "CAAOPotl9EWoBAPeLlTcQWAEUjZB3SoJG2UCHh1cpf2Q5"
-
-		var message messages.Message
-		message.Body = make(map[string]interface{})
-		message.Body["facebook"] = facebookData
-
-		var requestWrapper messages.RequestWrapper
-		requestWrapper.Message = message
-
-		_, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
-
-		So(err, ShouldNotBeNil)
-		So(err.Code, ShouldEqual, http.StatusInternalServerError)
-	})
-
-	Convey("Should return error if token doesn't match user", t, func() {
-
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(200)
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprintln(w, `{"data": {"app_id": "someappid", "user_id": "123123123123123123", "is_valid": true}}`)
-		}))
-		defer server.Close()
-
-		// Make a transport that reroutes all traffic to the example server
-		transport := &http.Transport{
-			Proxy: func(req *http.Request) (*url.URL, error) {
-				return url.Parse(server.URL)
-			},
-		}
-
-		// Make a http.Client with the transport
-		httpClient = &http.Client{Transport: transport}
-		facebookTokenVerificationEndpoint = "http://graph.facebook.com/debug_token"
-
-		facebookData := make(map[string]interface{})
-		facebookData["id"] = "10153102991889648"
-		facebookData["accessToken"] = "CAAOPotl9EWoBAPeLlTcQWAEUjZB3SoJG2UCHh1cpf2Q5"
-
-		var message messages.Message
-		message.Body = make(map[string]interface{})
-		message.Body["facebook"] = facebookData
-
-		var requestWrapper messages.RequestWrapper
-		requestWrapper.Message = message
-
-		_, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
-
-		So(err, ShouldNotBeNil)
-		So(err.Code, ShouldEqual, http.StatusBadRequest)
-	})
-
-	Convey("Should return error if token is not valid", t, func() {
-
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(200)
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprintln(w, `{"data": {"app_id": "someappid", "user_id": "123123123123123123", "is_valid": true}}`)
-		}))
-		defer server.Close()
-
-		// Make a transport that reroutes all traffic to the example server
-		transport := &http.Transport{
-			Proxy: func(req *http.Request) (*url.URL, error) {
-				return url.Parse(server.URL)
-			},
-		}
-
-		// Make a http.Client with the transport
-		httpClient = &http.Client{Transport: transport}
-		facebookTokenVerificationEndpoint = "http://graph.facebook.com/debug_token"
-
-		facebookData := make(map[string]interface{})
-		facebookData["id"] = "10153102991889648"
-		facebookData["accessToken"] = "CAAOPotl9EWoBAPeLlTcQWAEUjZB3SoJG2UCHh1cpf2Q5"
-
-		var message messages.Message
-		message.Body = make(map[string]interface{})
-		message.Body["facebook"] = facebookData
-
-		var requestWrapper messages.RequestWrapper
-		requestWrapper.Message = message
-
-		_, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
-
-		So(err, ShouldNotBeNil)
-		So(err.Code, ShouldEqual, http.StatusBadRequest)
-	})
-
-	Convey("Should return existing account", t, func() {
-
-		getAccountData = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (accountData map[string]interface{}, err *utils.Error) {
-			accountData = make(map[string]interface{})
-			accountData["_id"] = bson.ObjectIdHex("564f1a28e63bce219e1cc745")
-			return
-		}
-
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(200)
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprintln(w, `{"data": {"app_id": "someappid", "user_id": "10153102991889648", "is_valid": true}}`)
-		}))
-		defer server.Close()
-
-		// Make a transport that reroutes all traffic to the example server
-		transport := &http.Transport{
-			Proxy: func(req *http.Request) (*url.URL, error) {
-				return url.Parse(server.URL)
-			},
-		}
-
-		// Make a http.Client with the transport
-		httpClient = &http.Client{Transport: transport}
-		facebookTokenVerificationEndpoint = "http://graph.facebook.com/debug_token"
-
-		facebookData := make(map[string]interface{})
-		facebookData["id"] = "10153102991889648"
-		facebookData["accessToken"] = "CAAOPotl9EWoBAPeLlTcQWAEUjZB3SoJG2UCHh1cpf2Q5"
-
-		var message messages.Message
-		message.Body = make(map[string]interface{})
-		message.Body["facebook"] = facebookData
-
-		var requestWrapper messages.RequestWrapper
-		requestWrapper.Message = message
-
-		response, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
-
-		So(err, ShouldBeNil)
-		So(response, ShouldNotBeNil)
-	})
-
-	Convey("Should create account with Facebook", t, func() {
-
-		getAccountData = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (accountData map[string]interface{}, err *utils.Error) {
-			return
-		}
-
-		adapters.HandlePost = func (m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
-			response = make(map[string]interface{})
-			response["_id"] = bson.ObjectIdHex("564f1a28e63bce219e1cc745")
-			return
-		}
-
-		// Test server that always responds with 200 code, and specific payload
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(200)
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprintln(w, `{"data": {"app_id": "someappid","application": "Vurze","expires_at": 1449154800,"is_valid": true,"scopes": ["public_profile"],"user_id": "10153102991889648"}}`)
-		}))
-		defer server.Close()
-
-		// Make a transport that reroutes all traffic to the example server
-		transport := &http.Transport{
-			Proxy: func(req *http.Request) (*url.URL, error) {
-				return url.Parse(server.URL)
-			},
-		}
-		_ = transport
-
-		// Make a http.Client with the transport
-		httpClient = &http.Client{Transport: transport}
-		facebookTokenVerificationEndpoint = "http://graph.facebook.com/debug_token"
-
-		facebookData := make(map[string]interface{})
-		facebookData["id"] = "10153102991889648"
-		facebookData["accessToken"] = "CAAOPotl9EWoBAPeLlTcQWAEUjZB3SoJG2UCHh1cpf2Q5"
-
-		var message messages.Message
-		message.Body = make(map[string]interface{})
-		message.Body["facebook"] = facebookData
-
-		var requestWrapper messages.RequestWrapper
-		requestWrapper.Message = message
-
-		response, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
-
-		So(err, ShouldBeNil)
-		So(response.Status, ShouldEqual, http.StatusCreated)
-	})*/
 }
 
 func TestHandleLogin(t *testing.T) {
@@ -1064,7 +716,7 @@ func TestHandleLogin(t *testing.T) {
 		So(response.Status, ShouldEqual, http.StatusOK)
 	})
 
-	Convey("Should return forbidden (password) error", t, func() {
+	Convey("Should return password error", t, func() {
 
 		getAccountData = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (accountData map[string]interface{}, err *utils.Error) {
 			accountData = make(map[string]interface{})
@@ -1085,7 +737,28 @@ func TestHandleLogin(t *testing.T) {
 		requestWrapper.Message = message
 
 		response, _ := HandleLogin(requestWrapper, &adapters.MongoAdapter{})
-		So(response.Status, ShouldEqual, http.StatusForbidden)
+		So(response.Status, ShouldEqual, http.StatusUnauthorized)
+	})
+
+	Convey("Should return error if account doesn't exist", t, func() {
+
+		getAccountData = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (accountData map[string]interface{}, err *utils.Error) {
+			err = &utils.Error{http.StatusNotFound, "Item not found."}
+			return
+		}
+
+		parameters := make(map[string][]string)
+		parameters["password"] = []string{"zuhaha"}
+		parameters["username"] = []string{"yesitsme"}
+
+		var message messages.Message
+		message.Parameters = parameters
+
+		var requestWrapper messages.RequestWrapper
+		requestWrapper.Message = message
+
+		_, err := HandleLogin(requestWrapper, &adapters.MongoAdapter{})
+		So(err.Code, ShouldEqual, http.StatusUnauthorized)
 	})
 
 	Convey("Should return internal server error", t, func() {

@@ -392,7 +392,7 @@ func TestHandleGet(t *testing.T) {
 	Convey("Should call auth.HandleLogin", t, func() {
 
 		var called bool
-		auth.HandleLogin = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (response messages.Message, err error) {
+		auth.HandleLogin = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (response messages.Message, err *utils.Error) {
 			called = true
 			return
 		}

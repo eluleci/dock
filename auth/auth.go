@@ -119,20 +119,20 @@ var handleFacebookAuth = func(requestWrapper messages.RequestWrapper, dbAdapter 
 
 	tokenResponse, verificationErr := HTTPClient.Get(verificationUrl)
 	if verificationErr != nil || tokenResponse.StatusCode != 200 {
-		err = &utils.Error{http.StatusInternalServerError, "Reaching Facebook API failed. "}
+		err = &utils.Error{http.StatusInternalServerError, "Verifying token failed."}
 		return
 	}
 
 	var responseBody interface{}
 	data, readErr := ioutil.ReadAll(tokenResponse.Body)
 	if readErr != nil {
-		err = &utils.Error{http.StatusInternalServerError, "Reading Facebook response failed."}
+		err = &utils.Error{http.StatusInternalServerError, "Reading token response failed."}
 		return
 	}
 
 	parseErr := json.Unmarshal(data, &responseBody)
 	if parseErr != nil {
-		err = &utils.Error{http.StatusInternalServerError, "Parsing Facebook response failed."}
+		err = &utils.Error{http.StatusInternalServerError, "Parsing token response failed."}
 		return
 	}
 	responseBodyAsMap := responseBody.(map[string]interface{})
@@ -140,7 +140,7 @@ var handleFacebookAuth = func(requestWrapper messages.RequestWrapper, dbAdapter 
 
 	tokenInfo, hasTokenInfo := responseBodyAsMap["data"]
 	if !hasTokenInfo {
-		err = &utils.Error{http.StatusInternalServerError, "Unexpected response from Facebook while validating."}
+		err = &utils.Error{http.StatusInternalServerError, "Unexpected token response from platform."}
 		return
 	}
 
@@ -155,7 +155,7 @@ var handleFacebookAuth = func(requestWrapper messages.RequestWrapper, dbAdapter 
 	}
 
 	if !strings.EqualFold(tokensAppId.(string), config.SystemConfig.Facebook["appId"]) {
-		err = &utils.Error{http.StatusBadRequest, "App id doesn't match to the token's app id."}
+		err = &utils.Error{http.StatusInternalServerError, "App id doesn't match to the token's app id."}
 		return
 	}
 
@@ -205,8 +205,6 @@ var handleGoogleAuth = func(requestWrapper messages.RequestWrapper, dbAdapter *a
 	verificationUrl := strings.Join(urlBuilder, "");
 
 	tokenResponse, verificationErr := HTTPClient.Get(verificationUrl)
-	fmt.Println(tokenResponse)
-	fmt.Println(verificationErr)
 	if verificationErr != nil || tokenResponse.StatusCode != 200 {
 		err = &utils.Error{http.StatusInternalServerError, "Verifying token failed. "}
 		return
@@ -250,7 +248,7 @@ var handleGoogleAuth = func(requestWrapper messages.RequestWrapper, dbAdapter *a
 	return
 }
 
-var HandleLogin = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (response messages.Message, err error) {
+var HandleLogin = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (response messages.Message, err *utils.Error) {
 
 	emailArray, hasEmail := requestWrapper.Message.Parameters["email"]
 	usernameArray, hasUsername := requestWrapper.Message.Parameters["username"]
@@ -272,10 +270,9 @@ var HandleLogin = func(requestWrapper messages.RequestWrapper, dbAdapter *adapte
 
 	accountData, getAccountErr := getAccountData(requestWrapper, dbAdapter)
 	if getAccountErr != nil {
+		err = getAccountErr
 		if getAccountErr.Code == http.StatusNotFound {
 			err = &utils.Error{http.StatusUnauthorized, "Credentials don't match or account doesn't exist."}
-		} else {
-			err = getAccountErr
 		}
 		return
 	}
@@ -294,7 +291,7 @@ var HandleLogin = func(requestWrapper messages.RequestWrapper, dbAdapter *adapte
 			response.Status = http.StatusInternalServerError
 		}
 	} else {
-		response.Status = http.StatusForbidden
+		response.Status = http.StatusUnauthorized
 	}
 	return
 }
