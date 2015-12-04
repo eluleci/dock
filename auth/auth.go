@@ -20,6 +20,8 @@ const (
 	ResourceLogin = "/login"
 )
 
+var verificationEndpoint = "https://graph.facebook.com/debug_token"
+
 var defaultPermissions = map[string]bool{
 	"create": true,
 	"query": true,
@@ -40,7 +42,7 @@ var HandleSignUp = func(requestWrapper messages.RequestWrapper, dbAdapter *adapt
 	if hasUsername || hasEmail {
 		response.Body, err = createLocalAccount(requestWrapper, dbAdapter)
 	} else if hasFacebook {
-		response.Body, err = createSocialAccount(requestWrapper, dbAdapter, httpClient)
+		response.Body, err = handleFacebookAuth(requestWrapper, dbAdapter, httpClient)
 	} else {
 		err = &utils.Error{http.StatusBadRequest, "No suitable registration data found."}
 		return
@@ -88,9 +90,7 @@ var createLocalAccount = func(requestWrapper messages.RequestWrapper, dbAdapter 
 	return
 }
 
-var verificationEndpoint = "https://graph.facebook.com/debug_token"
-
-var createSocialAccount = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter, HTTPClient *http.Client) (response map[string]interface{}, err *utils.Error) {
+var handleFacebookAuth = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter, HTTPClient *http.Client) (response map[string]interface{}, err *utils.Error) {
 
 	facebookData, _ := requestWrapper.Message.Body["facebook"]
 	facebookDataAsMap := facebookData.(map[string]interface{})
@@ -140,15 +140,21 @@ var createSocialAccount = func(requestWrapper messages.RequestWrapper, dbAdapter
 
 	tokenInfoAsMap := tokenInfo.(map[string]interface{})
 
+	tokensAppId, hasAppId := tokenInfoAsMap["app_id"]
 	tokensUserId, hasUserId := tokenInfoAsMap["user_id"]
 	isValid, hasIsValid := tokenInfoAsMap["is_valid"]
-	if !hasUserId || !hasIsValid {
+	if !hasAppId || !hasUserId || !hasIsValid {
 		err = &utils.Error{http.StatusInternalServerError, "Unexpected response from Facebook while validating."}
 		return
 	}
 
+	if !strings.EqualFold(tokensAppId.(string), config.SystemConfig.Facebook["appId"]) {
+		err = &utils.Error{http.StatusBadRequest, "App id doesn't match to the token's app id."}
+		return
+	}
+
 	if !strings.EqualFold(tokensUserId.(string), userId.(string)) {
-		err = &utils.Error{http.StatusBadRequest, "User id doesn't match the token."}
+		err = &utils.Error{http.StatusBadRequest, "User id doesn't match to the token's user id."}
 		return
 	}
 
@@ -287,7 +293,6 @@ func getRolesOfUser(requestWrapper messages.RequestWrapper) (roles []string, err
 	return
 }
 
-
 func extractUserFromRequest(requestWrapper messages.RequestWrapper) (user map[string]interface{}, err utils.Error) {
 
 	authHeaders := requestWrapper.Message.Headers["Authorization"]
@@ -340,7 +345,6 @@ func getPermissionsOnResources(roles []string, requestWrapper messages.RequestWr
 
 	return
 }
-
 
 func verifyToken(tokenString string) (userData map[string]interface{}, err utils.Error) {
 
