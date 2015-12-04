@@ -20,6 +20,9 @@ var _getAccountData = func(requestWrapper messages.RequestWrapper, dbAdapter *ad
 	return
 }
 
+// keeping the original value of endpoint
+var _facebookTokenVerificationEndpoint = facebookTokenVerificationEndpoint
+
 func TestMain(m *testing.M) {
 	saveRealFunctions()
 	os.Exit(m.Run())
@@ -254,11 +257,10 @@ func TestHandleSignUp(t *testing.T) {
 				return url.Parse(server.URL)
 			},
 		}
-		_ = transport
 
 		// Make a http.Client with the transport
 		httpClient = &http.Client{Transport: transport}
-		verificationEndpoint = "https://any.endpoint.not.correct"
+		facebookTokenVerificationEndpoint = "https://any.endpoint.not.correct"
 
 		facebookData := make(map[string]interface{})
 		facebookData["id"] = "10153102991889648"
@@ -276,6 +278,9 @@ func TestHandleSignUp(t *testing.T) {
 		So(err, ShouldNotBeNil)
 		So(err.Code, ShouldEqual, http.StatusInternalServerError)
 	})
+
+	// reverting endpoint back to the original value
+	facebookTokenVerificationEndpoint = _facebookTokenVerificationEndpoint
 
 	Convey("Should fail parsing Facebook response", t, func() {
 
@@ -293,11 +298,9 @@ func TestHandleSignUp(t *testing.T) {
 				return url.Parse(server.URL)
 			},
 		}
-		_ = transport
 
 		// Make a http.Client with the transport
 		httpClient = &http.Client{Transport: transport}
-		verificationEndpoint = "http://any.endpoint.not.correct"
 
 		facebookData := make(map[string]interface{})
 		facebookData["id"] = "10153102991889648"
@@ -316,46 +319,7 @@ func TestHandleSignUp(t *testing.T) {
 		So(err.Code, ShouldEqual, http.StatusInternalServerError)
 	})
 
-	Convey("Should fail finding expected fields in Facebook response", t, func() {
-
-		// Test server that always responds with 200 code, and specific payload
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(200)
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprintln(w, `{"error": {"app_id": "1002354526458218"}}`)
-		}))
-		defer server.Close()
-
-		// Make a transport that reroutes all traffic to the example server
-		transport := &http.Transport{
-			Proxy: func(req *http.Request) (*url.URL, error) {
-				return url.Parse(server.URL)
-			},
-		}
-		_ = transport
-
-		// Make a http.Client with the transport
-		httpClient = &http.Client{Transport: transport}
-		verificationEndpoint = "http://any.endpoint.not.correct"
-
-		facebookData := make(map[string]interface{})
-		facebookData["id"] = "10153102991889648"
-		facebookData["accessToken"] = "CAAOPotl9EWoBAPeLlTcQWAEUjZB3SoJG2UCHh1cpf2Q5"
-
-		var message messages.Message
-		message.Body = make(map[string]interface{})
-		message.Body["facebook"] = facebookData
-
-		var requestWrapper messages.RequestWrapper
-		requestWrapper.Message = message
-
-		_, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
-
-		So(err, ShouldNotBeNil)
-		So(err.Code, ShouldEqual, http.StatusInternalServerError)
-	})
-
-	Convey("Should fail finding expected fields in Facebook response (user_id, is_valid)", t, func() {
+	Convey("Should fail finding required fields in Facebook response ", t, func() {
 
 		// Test server that always responds with 200 code, and specific payload
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -371,11 +335,9 @@ func TestHandleSignUp(t *testing.T) {
 				return url.Parse(server.URL)
 			},
 		}
-		_ = transport
 
 		// Make a http.Client with the transport
 		httpClient = &http.Client{Transport: transport}
-		verificationEndpoint = "http://any.endpoint.not.correct"
 
 		facebookData := make(map[string]interface{})
 		facebookData["id"] = "10153102991889648"
@@ -396,11 +358,10 @@ func TestHandleSignUp(t *testing.T) {
 
 	Convey("Should return error if token doesn't match user", t, func() {
 
-		// Test server that always responds with 200 code, and specific payload
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(200)
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprintln(w, `{"data": {"user_id": "123123123123123123", "is_valid": true}}`)
+			fmt.Fprintln(w, `{"data": {"app_id": "someappid", "user_id": "123123123123123123", "is_valid": true}}`)
 		}))
 		defer server.Close()
 
@@ -410,11 +371,10 @@ func TestHandleSignUp(t *testing.T) {
 				return url.Parse(server.URL)
 			},
 		}
-		_ = transport
 
 		// Make a http.Client with the transport
 		httpClient = &http.Client{Transport: transport}
-		verificationEndpoint = "http://any.endpoint.not.correct"
+		facebookTokenVerificationEndpoint = "http://graph.facebook.com/debug_token"
 
 		facebookData := make(map[string]interface{})
 		facebookData["id"] = "10153102991889648"
@@ -435,11 +395,10 @@ func TestHandleSignUp(t *testing.T) {
 
 	Convey("Should return error if token is not valid", t, func() {
 
-		// Test server that always responds with 200 code, and specific payload
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(200)
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprintln(w, `{"data": {"user_id": "10153102991889648", "is_valid": false}}`)
+			fmt.Fprintln(w, `{"data": {"app_id": "someappid", "user_id": "123123123123123123", "is_valid": true}}`)
 		}))
 		defer server.Close()
 
@@ -449,11 +408,10 @@ func TestHandleSignUp(t *testing.T) {
 				return url.Parse(server.URL)
 			},
 		}
-		_ = transport
 
 		// Make a http.Client with the transport
 		httpClient = &http.Client{Transport: transport}
-		verificationEndpoint = "http://any.endpoint.not.correct"
+		facebookTokenVerificationEndpoint = "http://graph.facebook.com/debug_token"
 
 		facebookData := make(map[string]interface{})
 		facebookData["id"] = "10153102991889648"
@@ -480,11 +438,10 @@ func TestHandleSignUp(t *testing.T) {
 			return
 		}
 
-		// Test server that always responds with 200 code, and specific payload
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(200)
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprintln(w, `{"data": {"user_id": "10153102991889648", "is_valid": true}}`)
+			fmt.Fprintln(w, `{"data": {"app_id": "someappid", "user_id": "10153102991889648", "is_valid": true}}`)
 		}))
 		defer server.Close()
 
@@ -494,11 +451,10 @@ func TestHandleSignUp(t *testing.T) {
 				return url.Parse(server.URL)
 			},
 		}
-		_ = transport
 
 		// Make a http.Client with the transport
 		httpClient = &http.Client{Transport: transport}
-		verificationEndpoint = "http://any.endpoint.not.correct"
+		facebookTokenVerificationEndpoint = "http://graph.facebook.com/debug_token"
 
 		facebookData := make(map[string]interface{})
 		facebookData["id"] = "10153102991889648"
@@ -533,7 +489,7 @@ func TestHandleSignUp(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(200)
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprintln(w, `{"data": {"app_id": "1002354526458218","application": "Vurze","expires_at": 1449154800,"is_valid": true,"scopes": ["public_profile"],"user_id": "10153102991889648"}}`)
+			fmt.Fprintln(w, `{"data": {"app_id": "someappid","application": "Vurze","expires_at": 1449154800,"is_valid": true,"scopes": ["public_profile"],"user_id": "10153102991889648"}}`)
 		}))
 		defer server.Close()
 
@@ -547,7 +503,7 @@ func TestHandleSignUp(t *testing.T) {
 
 		// Make a http.Client with the transport
 		httpClient = &http.Client{Transport: transport}
-		verificationEndpoint = "http://graph.facebook.com/debug_token"
+		facebookTokenVerificationEndpoint = "http://graph.facebook.com/debug_token"
 
 		facebookData := make(map[string]interface{})
 		facebookData["id"] = "10153102991889648"

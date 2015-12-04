@@ -13,6 +13,7 @@ import (
 	"strings"
 	"io/ioutil"
 	"github.com/eluleci/dock/config"
+	"fmt"
 )
 
 const (
@@ -20,7 +21,8 @@ const (
 	ResourceLogin = "/login"
 )
 
-var verificationEndpoint = "https://graph.facebook.com/debug_token"
+var facebookTokenVerificationEndpoint = "https://graph.facebook.com/debug_token"
+var googleTokenVerificationEndpoint = "https://www.googleapis.com/oauth2/v3/tokeninfo?id_token="
 
 var defaultPermissions = map[string]bool{
 	"create": true,
@@ -38,11 +40,14 @@ var HandleSignUp = func(requestWrapper messages.RequestWrapper, dbAdapter *adapt
 	_, hasUsername := requestWrapper.Message.Body["username"]
 	_, hasEmail := requestWrapper.Message.Body["email"]
 	_, hasFacebook := requestWrapper.Message.Body["facebook"]
+	_, hasGoogle := requestWrapper.Message.Body["google"]
 
 	if hasUsername || hasEmail {
 		response.Body, err = createLocalAccount(requestWrapper, dbAdapter)
 	} else if hasFacebook {
 		response.Body, err = handleFacebookAuth(requestWrapper, dbAdapter, httpClient)
+	}  else if hasGoogle {
+		response.Body, err = handleGoogleAuth(requestWrapper, dbAdapter, httpClient)
 	} else {
 		err = &utils.Error{http.StatusBadRequest, "No suitable registration data found."}
 		return
@@ -109,7 +114,7 @@ var handleFacebookAuth = func(requestWrapper messages.RequestWrapper, dbAdapter 
 		return
 	}
 
-	urlBuilder := []string{verificationEndpoint, "?access_token=", appFacebookAccessToken, "&input_token=", accessToken.(string)}
+	urlBuilder := []string{facebookTokenVerificationEndpoint, "?access_token=", appFacebookAccessToken, "&input_token=", accessToken.(string)}
 	verificationUrl := strings.Join(urlBuilder, "");
 
 	tokenResponse, verificationErr := HTTPClient.Get(verificationUrl)
@@ -130,8 +135,9 @@ var handleFacebookAuth = func(requestWrapper messages.RequestWrapper, dbAdapter 
 		err = &utils.Error{http.StatusInternalServerError, "Parsing Facebook response failed."}
 		return
 	}
-
 	responseBodyAsMap := responseBody.(map[string]interface{})
+	fmt.Println(responseBodyAsMap)
+
 	tokenInfo, hasTokenInfo := responseBodyAsMap["data"]
 	if !hasTokenInfo {
 		err = &utils.Error{http.StatusInternalServerError, "Unexpected response from Facebook while validating."}
@@ -160,6 +166,72 @@ var handleFacebookAuth = func(requestWrapper messages.RequestWrapper, dbAdapter 
 
 	if !isValid.(bool) {
 		err = &utils.Error{http.StatusBadRequest, "Token is not valid."}
+		return
+	}
+
+	existingAccount, _ := getAccountData(requestWrapper, dbAdapter)
+
+	if existingAccount == nil {
+		response, err = adapters.HandlePost(dbAdapter, requestWrapper)
+		response["isNewUser"] = true
+	} else {
+		response = existingAccount
+		response["isNewUser"] = false
+		// TODO update existing token with the new token. (optionally check which expires later)
+	}
+	return
+}
+
+var handleGoogleAuth = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter, HTTPClient *http.Client) (response map[string]interface{}, err *utils.Error) {
+
+	googleData, _ := requestWrapper.Message.Body["google"]
+	googleDataAsMap := googleData.(map[string]interface{})
+
+	_, hasId := googleDataAsMap["id"]
+	idToken, hasIdToken := googleDataAsMap["idToken"]
+
+	if !hasId || !hasIdToken {
+		err = &utils.Error{http.StatusBadRequest, "Google data must contain user id and id token."}
+		return
+	}
+
+	appGoogleClientId := config.SystemConfig.Google["clientId"]
+	if appGoogleClientId == "" {
+		err = &utils.Error{http.StatusInternalServerError, "Google information is not provided in server configuration."}
+		return
+	}
+
+	urlBuilder := []string{googleTokenVerificationEndpoint, idToken.(string)}
+	verificationUrl := strings.Join(urlBuilder, "");
+
+	tokenResponse, verificationErr := HTTPClient.Get(verificationUrl)
+	if verificationErr != nil || tokenResponse.StatusCode != 200 {
+		err = &utils.Error{http.StatusInternalServerError, "Verifying token failed. "}
+		return
+	}
+
+	var responseBody interface{}
+	data, readErr := ioutil.ReadAll(tokenResponse.Body)
+	if readErr != nil {
+		err = &utils.Error{http.StatusInternalServerError, "Reading token response failed."}
+		return
+	}
+
+	parseErr := json.Unmarshal(data, &responseBody)
+	if parseErr != nil {
+		err = &utils.Error{http.StatusInternalServerError, "Parsing token response failed."}
+		return
+	}
+	tokenInfoAsMap := responseBody.(map[string]interface{})
+
+	tokensClientId, hasClientId := tokenInfoAsMap["aud"]
+	if !hasClientId {
+		err = &utils.Error{http.StatusInternalServerError, "Unexpected token response from platform."}
+		return
+	}
+
+	if !strings.EqualFold(tokensClientId.(string), appGoogleClientId) {
+		err = &utils.Error{http.StatusBadRequest, "Client id doesn't match to the token's client id."}
 		return
 	}
 
@@ -368,22 +440,27 @@ func verifyToken(tokenString string) (userData map[string]interface{}, err utils
 var getAccountData = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (accountData map[string]interface{}, err *utils.Error) {
 
 	var whereParams = make(map[string]interface{})
+	var queryKey, queryParam string
 
 	if username, hasUsername := requestWrapper.Message.Body["username"]; hasUsername && username != "" {
-		paramUsername := make(map[string]string)
-		paramUsername["$eq"] = username.(string)
-		whereParams["username"] = paramUsername
+		queryKey = "username"
+		queryParam = username.(string)
 	} else if email, hasEmail := requestWrapper.Message.Body["email"]; hasEmail && email != "" {
-		paramEmail := make(map[string]string)
-		paramEmail["$eq"] = email.(string)
-		whereParams["email"] = paramEmail
+		queryKey = "email"
+		queryParam = email.(string)
 	} else if facebookData, hasFacebookData := requestWrapper.Message.Body["facebook"]; hasFacebookData {
 		facebookDataAsMap := facebookData.(map[string]interface{})
-		userId := facebookDataAsMap["id"]
-		paramFacebookId := make(map[string]string)
-		paramFacebookId["$eq"] = userId.(string)
-		whereParams["facebook.id"] = paramFacebookId
+		queryParam = facebookDataAsMap["id"].(string)
+		queryKey = "facebook.id"
+	} else if googleData, hasGoogleData := requestWrapper.Message.Body["google"]; hasGoogleData {
+		googleDataAsMap := googleData.(map[string]interface{})
+		queryParam = googleDataAsMap["id"].(string)
+		queryKey = "google.id"
 	}
+
+	query := make(map[string]string)
+	query["$eq"] = queryParam
+	whereParams[queryKey] = query
 
 	whereParamsJson, jsonErr := json.Marshal(whereParams)
 	if jsonErr != nil {
