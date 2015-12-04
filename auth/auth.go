@@ -195,8 +195,8 @@ var handleGoogleAuth = func(requestWrapper messages.RequestWrapper, dbAdapter *a
 		return
 	}
 
-	appGoogleClientId := config.SystemConfig.Google["clientId"]
-	if appGoogleClientId == "" {
+	googleClientId := config.SystemConfig.Google["clientId"]
+	if googleClientId == "" {
 		err = &utils.Error{http.StatusInternalServerError, "Google information is not provided in server configuration."}
 		return
 	}
@@ -205,6 +205,8 @@ var handleGoogleAuth = func(requestWrapper messages.RequestWrapper, dbAdapter *a
 	verificationUrl := strings.Join(urlBuilder, "");
 
 	tokenResponse, verificationErr := HTTPClient.Get(verificationUrl)
+	fmt.Println(tokenResponse)
+	fmt.Println(verificationErr)
 	if verificationErr != nil || tokenResponse.StatusCode != 200 {
 		err = &utils.Error{http.StatusInternalServerError, "Verifying token failed. "}
 		return
@@ -230,8 +232,8 @@ var handleGoogleAuth = func(requestWrapper messages.RequestWrapper, dbAdapter *a
 		return
 	}
 
-	if !strings.EqualFold(tokensClientId.(string), appGoogleClientId) {
-		err = &utils.Error{http.StatusBadRequest, "Client id doesn't match to the token's client id."}
+	if !strings.EqualFold(tokensClientId.(string), googleClientId) {
+		err = &utils.Error{http.StatusInternalServerError, "Client id doesn't match to the token's client id."}
 		return
 	}
 
