@@ -36,5 +36,5 @@ RUN go install github.com/eluleci/dock
 # Run the dock command by default when the container starts.
 ENTRYPOINT /go/bin/dock
 
-# Document that the service listens on port 8080
-EXPOSE 8080
+# Document that the service listens on port 1707
+EXPOSE 1707
