@@ -381,6 +381,7 @@ var sendNewPasswordEmail = func(smtpServer, smtpPost, senderEmail, senderEmailPa
 	"From: " + senderEmail + "\r\n" +
 	"To: " + recipientEmail + "\r\n" +
 	"Subject: " + subject + "\r\n" +
+	"MIME-version: 1.0;\nContent-Type: text/html; charset=\"UTF-8\";\n\n" +
 	"\r\n" + generatedContent + "\r\n")
 	sendMailErr := smtp.SendMail(smtpServer + ":" + smtpPost, auth, senderEmail, to, msg)
 

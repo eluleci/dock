@@ -23,7 +23,7 @@ Configurations, such as database, are provided with **dock-config.json** file an
 
 There is a Docker image that contains the server at **eluleci/dock** in [Docker Hub](docker pull yourusername/docker-whale) so you can pull and run the image with this command.
 
-`docker run --publish 1707:8080 --name Dock eluleci/dock`
+`docker run --publish 8080:1707 --name Dock eluleci/dock`
 
 It will exit with a config error. You must provide a **dock-config.json** file to the container you just built. Locate the configuration file and run
 

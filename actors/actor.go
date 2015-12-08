@@ -51,6 +51,8 @@ var CreateActor = func(res string, level int, parentInbox chan messages.RequestW
 	} else if level == 2 {
 		a.actorType = ActorTypeObject
 	}
+	// TODO check for more levels.
+	// TODO check for objectId is valid hex or not
 
 	a.res = res
 	a.level = level
