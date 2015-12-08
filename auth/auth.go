@@ -13,12 +13,25 @@ import (
 	"strings"
 	"io/ioutil"
 	"github.com/eluleci/dock/config"
+	"math/rand"
+	"net/smtp"
+	"fmt"
 )
 
 const (
 	ResourceRegister = "/register"
 	ResourceLogin = "/login"
+	ResourceTypeUsers = "/users"
 )
+
+// used for password generation
+var fruits = []string{"apples", "appricots", "avocados", "bananas", "cherries", "coconuts", "cranberries", "damsons",
+	"dates", "durian", "grapes", "guavas", "jambuls", "jujubes", "kiwis", "lemons", "limes", "mangos", "melons",
+	"olives", "oranes", "mandarines", "papayas", "peaches", "pears", "plums", "pineapples", "pumpkins", "pomelos",
+	"raspberries", "satsumas", "strawberries", "tomatoes"}
+
+// used for password generation
+var quantities = []string{"two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"}
 
 var commandPermissionMap = map[string]map[string]bool{
 	"get": {
@@ -296,6 +309,84 @@ var HandleLogin = func(requestWrapper messages.RequestWrapper, dbAdapter *adapte
 		}
 	} else {
 		response.Status = http.StatusUnauthorized
+	}
+	return
+}
+
+var HandleResetPassword = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (response messages.Message, err *utils.Error) {
+
+	resetPasswordConfig := config.SystemConfig.ResetPassword
+	if resetPasswordConfig == nil {
+		err = &utils.Error{http.StatusInternalServerError, "Email reset configuration is not set in configuration file."}
+	}
+
+	senderEmail, hasSenderEmail := config.SystemConfig.ResetPassword["senderEmail"]
+	senderEmailPassword, hasSenderEmailPassword := config.SystemConfig.ResetPassword["senderEmailPassword"]
+	smtpServer, hasSmtpServer := config.SystemConfig.ResetPassword["smtpServer"]
+	smtpPort, hasSmtpPort := config.SystemConfig.ResetPassword["smtpPort"]
+	mailSubject, hasMailSubject := config.SystemConfig.ResetPassword["mailSubject"]
+	mailContentTemplate, hasMailContent := config.SystemConfig.ResetPassword["mailContentTemplate"]
+
+	if !hasSmtpServer || !hasSmtpPort || !hasSenderEmail || !hasSenderEmailPassword || !hasMailSubject || !hasMailContent {
+		err = &utils.Error{http.StatusInternalServerError, "Email reset configuration is not correct."}
+		return
+	}
+
+	recipientEmail, hasRecipientEmail := requestWrapper.Message.Body["email"]
+	if !hasRecipientEmail {
+		err = &utils.Error{http.StatusBadRequest, "Email must be provided in the body."}
+		return
+	}
+
+	accountData, err := getAccountData(requestWrapper, dbAdapter)
+	if err != nil {
+		return
+	}
+
+	// generating random password like: "twoapplesandfiveoranges" or "threekiwisandsevenbananas"
+	passwordFirstHalf := quantities[rand.Intn(len(quantities))] + fruits[rand.Intn(len(fruits))]
+	passwordSecondHalf := quantities[rand.Intn(len(quantities))] + fruits[rand.Intn(len(fruits))]
+	generatedPassword := passwordFirstHalf + "and" + passwordSecondHalf
+	hashedPassword, hashErr := bcrypt.GenerateFromPassword([]byte(generatedPassword), bcrypt.DefaultCost)
+	if hashErr != nil {
+		err = &utils.Error{http.StatusInternalServerError, "Hashing new password failed."}
+		return
+	}
+
+	updatePasswordRW := messages.RequestWrapper{}
+	updatePasswordM := messages.Message{}
+	updatePasswordM.Res = ResourceTypeUsers + "/" + accountData["_id"].(bson.ObjectId).Hex()
+	updatePasswordM.Body = map[string]interface{}{
+		"password": string(hashedPassword),
+	}
+	updatePasswordRW.Message = updatePasswordM
+
+	response.Body, err = adapters.HandlePut(dbAdapter, updatePasswordRW)
+
+	if err != nil {
+		return
+	}
+
+	err = sendNewPasswordEmail(smtpServer, smtpPort, senderEmail, senderEmailPassword, mailSubject, mailContentTemplate, recipientEmail.(string), generatedPassword)
+	return
+}
+
+var sendNewPasswordEmail = func(smtpServer, smtpPost, senderEmail, senderEmailPassword, subject, contentTemplate, recipientEmail, newPassword string) (err *utils.Error) {
+
+	auth := smtp.PlainAuth("", senderEmail, senderEmailPassword, smtpServer)
+
+	generatedContent := fmt.Sprintf(contentTemplate, newPassword)
+	to := []string{recipientEmail}
+	msg := []byte(
+	"From: " + senderEmail + "\r\n" +
+	"To: " + recipientEmail + "\r\n" +
+	"Subject: " + subject + "\r\n" +
+	"\r\n" + generatedContent + "\r\n")
+	sendMailErr := smtp.SendMail(smtpServer + ":" + smtpPost, auth, senderEmail, to, msg)
+
+	if sendMailErr != nil {
+		fmt.Println(sendMailErr)
+		err = &utils.Error{http.StatusInternalServerError, "Sending email failed."}
 	}
 	return
 }

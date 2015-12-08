@@ -18,6 +18,7 @@ const (
 	ResourceTypeUsers = "/users"
 	ResourceRegister = "/register"
 	ResourceLogin = "/login"
+	ResourceResetPassword = "/resetpassword"
 )
 
 type Actor struct {
@@ -37,7 +38,7 @@ var RootActor Actor
 var CreateActor = func(res string, level int, parentInbox chan messages.RequestWrapper) (a Actor) {
 
 	var className string
-	if strings.EqualFold(res, ResourceLogin) || strings.EqualFold(res, ResourceRegister) {
+	if strings.EqualFold(res, ResourceLogin) || strings.EqualFold(res, ResourceRegister)  || strings.EqualFold(res, ResourceResetPassword) {
 		className = ClassUsers
 	} else {
 		className = retrieveClassName(res, level)
@@ -170,6 +171,8 @@ var handlePost = func(a *Actor, requestWrapper messages.RequestWrapper) (respons
 		response, err = auth.HandleSignUp(requestWrapper, a.adapter)
 	} else if strings.EqualFold(a.res, ResourceLogin) {                            // login request
 		response, err = auth.HandleLogin(requestWrapper, a.adapter)
+	} else if strings.EqualFold(a.res, ResourceResetPassword) {                    // reset password
+		response, err = auth.HandleResetPassword(requestWrapper, a.adapter)
 	} else if strings.EqualFold(a.res, ResourceTypeUsers) {                        // post on users not allowed
 		response.Status = http.StatusMethodNotAllowed
 	} else if strings.EqualFold(a.actorType, ActorTypeCollection) {                // create object request

@@ -87,6 +87,11 @@ var HandleGet = func (m *MongoAdapter, requestWrapper messages.RequestWrapper) (
 var HandlePut = func (m *MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
 
 	message := requestWrapper.Message
+	if message.Body == nil {
+		err = &utils.Error{http.StatusBadRequest, "Request body cannot be empty for update requests."}
+		return
+	}
+
 	message.Body["updatedAt"] = int32(time.Now().Unix())
 	id := message.Res[strings.LastIndex(message.Res, "/")+1:]
 

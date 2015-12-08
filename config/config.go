@@ -19,6 +19,12 @@ type Config struct {
 	 */
 	Google     map[string]string `json:"google,omitempty"`
 
+	/* Reset password configuration. Used for sending email to users when they reset their passwords.
+	 *
+	 *
+	 */
+	ResetPassword     map[string]string `json:"resetPassword,omitempty"`
+
 }
 
 var SystemConfig Config

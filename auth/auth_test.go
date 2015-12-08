@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"fmt"
 	"github.com/eluleci/dock/config"
+	"strings"
 )
 
 func setDefaultServer(mockServer *httptest.Server) {
@@ -779,6 +780,131 @@ func TestHandleLogin(t *testing.T) {
 
 		_, err := HandleLogin(requestWrapper, &adapters.MongoAdapter{})
 		So(err.Code, ShouldEqual, http.StatusInternalServerError)
+	})
+
+}
+
+func TestResetPassword(t *testing.T) {
+
+	config.SystemConfig = config.Config{}
+	config.SystemConfig.ResetPassword = map[string]string {
+		"senderEmail": "info@rihtim.com",
+		"senderEmailPassword": "emailadresspassword",
+		"smtpServer":"mail.rihtim.com",
+		"smtpPort":"25",
+		"mailSubject":"Reset password!",
+		"mailContentTemplate":"Your new password is %s.",
+	}
+
+	Convey("Should return internal server error", t, func() {
+
+		correctConfig := config.SystemConfig.ResetPassword
+		config.SystemConfig.ResetPassword = nil
+
+		var message messages.Message
+		message.Body = make(map[string]interface{})
+
+		var requestWrapper messages.RequestWrapper
+		requestWrapper.Message = message
+
+		_, err := HandleResetPassword(requestWrapper, &adapters.MongoAdapter{})
+
+		So(err.Code, ShouldEqual, http.StatusInternalServerError)
+
+		config.SystemConfig.ResetPassword = correctConfig
+	})
+
+	Convey("Should return bad request", t, func() {
+
+		var message messages.Message
+		message.Body = make(map[string]interface{})
+
+		var requestWrapper messages.RequestWrapper
+		requestWrapper.Message = message
+
+		_, err := HandleResetPassword(requestWrapper, &adapters.MongoAdapter{})
+
+		So(err.Code, ShouldEqual, http.StatusBadRequest)
+	})
+
+	Convey("Should return not found", t, func() {
+
+		getAccountData = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (accountData map[string]interface{}, err *utils.Error) {
+			err = &utils.Error{http.StatusNotFound, "Account not found."}
+			return
+		}
+
+		var message messages.Message
+		message.Body = make(map[string]interface{})
+		message.Body["email"] = "email@domain.com"
+
+		var requestWrapper messages.RequestWrapper
+		requestWrapper.Message = message
+
+		_, err := HandleResetPassword(requestWrapper, &adapters.MongoAdapter{})
+
+		So(err.Code, ShouldEqual, http.StatusNotFound)
+	})
+
+	Convey("Should return the error from adapters.HandlePut", t, func() {
+
+		getAccountData = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (accountData map[string]interface{}, err *utils.Error) {
+			accountData = make(map[string]interface{})
+			accountData["_id"] = bson.ObjectIdHex("564f1a28e63bce219e1cc745")
+			return
+		}
+
+		adapters.HandlePut = func (m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
+			err = &utils.Error{http.StatusInternalServerError, "Some error happened."}
+			return
+		}
+
+		var message messages.Message
+		message.Body = make(map[string]interface{})
+		message.Body["email"] = "email@domain.com"
+
+		var requestWrapper messages.RequestWrapper
+		requestWrapper.Message = message
+
+		_, err := HandleResetPassword(requestWrapper, &adapters.MongoAdapter{})
+
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("Should call adapters.HandlePut with new password and correct user resource", t, func() {
+
+		getAccountData = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (accountData map[string]interface{}, err *utils.Error) {
+			accountData = make(map[string]interface{})
+			accountData["_id"] = bson.ObjectIdHex("564f1a28e63bce219e1cc745")
+			return
+		}
+
+		var isResCorrect bool
+		var isPasswordProvided bool
+		adapters.HandlePut = func (m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
+			isResCorrect = strings.EqualFold("/users/564f1a28e63bce219e1cc745", requestWrapper.Message.Res)
+			isPasswordProvided = len(requestWrapper.Message.Body["password"].(string)) > 0
+			return
+		}
+
+		var called bool
+		sendNewPasswordEmail = func(smtpServer, smtpPost, senderEmail, senderEmailPassword, subject, contentTemplate, recipientEmail, newPassword string) (err *utils.Error) {
+			called = true
+			return
+		}
+
+		var message messages.Message
+		message.Body = make(map[string]interface{})
+		message.Body["email"] = "email@domain.com"
+
+		var requestWrapper messages.RequestWrapper
+		requestWrapper.Message = message
+
+		HandleResetPassword(requestWrapper, &adapters.MongoAdapter{})
+
+		So(isResCorrect, ShouldBeTrue)
+		So(isPasswordProvided, ShouldBeTrue)
+		So(called, ShouldBeTrue)
 	})
 
 }
