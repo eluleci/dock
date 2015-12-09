@@ -9,15 +9,16 @@ import (
 	"time"
 	"strings"
 	"net/http"
+	"fmt"
 )
 
 type MongoAdapter struct {
-	Collection    *mgo.Collection
+	Collection *mgo.Collection
 }
 
 var MongoDB *mgo.Database
 
-var HandlePost = func (m *MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
+var HandlePost = func(m *MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
 
 	message := requestWrapper.Message
 
@@ -42,10 +43,10 @@ var HandlePost = func (m *MongoAdapter, requestWrapper messages.RequestWrapper) 
 	return
 }
 
-var HandleGetById = func (m *MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
+var HandleGetById = func(m *MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
 
 	message := requestWrapper.Message
-	id := message.Res[strings.LastIndex(message.Res, "/")+1:]
+	id := message.Res[strings.LastIndex(message.Res, "/") + 1:]
 	response = make(map[string]interface{})
 
 	getErr := m.Collection.FindId(bson.ObjectIdHex(id)).One(&response)
@@ -57,34 +58,57 @@ var HandleGetById = func (m *MongoAdapter, requestWrapper messages.RequestWrappe
 	return
 }
 
-var HandleGet = func (m *MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
+var HandleGet = func(m *MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
 
 	message := requestWrapper.Message
 
 	response = make(map[string]interface{})
 
-	var results []map[string]interface {}
+	if message.Parameters["aggregate"] != nil && message.Parameters["where"] != nil {
+		err = &utils.Error{http.StatusBadRequest, "Where and aggregate parameters cannot be used at the same request."}
+		return
+	}
+
+	var results []map[string]interface{}
 
 	var whereParams map[string]interface{}
 	if message.Parameters["where"] != nil {
 		json.Unmarshal([]byte(message.Parameters["where"][0]), &whereParams)
 	}
+	if whereParams != nil {
+		findErr := m.Collection.Find(whereParams).All(&results)
+		if findErr != nil {
+			err = &utils.Error{http.StatusInternalServerError, "Querying items failed."};
+			return
+		}
+	}
 
-	findErr := m.Collection.Find(whereParams).All(&results)
-	if findErr != nil {
-		err = &utils.Error{http.StatusInternalServerError, "Querying items failed."};
-		return
+	var aggregateParams interface{}
+	if message.Parameters["aggregate"] != nil {
+		parseErr := json.Unmarshal([]byte(message.Parameters["aggregate"][0]), &aggregateParams)
+		if parseErr != nil {
+			fmt.Println(parseErr)
+			err = &utils.Error{http.StatusBadRequest, "Parsing aggregate json failed."}
+			return
+		}
+	}
+	if aggregateParams != nil {
+		findErr := m.Collection.Pipe(aggregateParams).All(&results)
+		if findErr != nil {
+			err = &utils.Error{http.StatusInternalServerError, "Agregating items failed."};
+			return
+		}
 	}
 
 	if results != nil {
 		response["data"] = results
 	} else {
-		response["data"] = make([]map[string]interface {}, 0)
+		response["data"] = make([]map[string]interface{}, 0)
 	}
 	return
 }
 
-var HandlePut = func (m *MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
+var HandlePut = func(m *MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
 
 	message := requestWrapper.Message
 	if message.Body == nil {
@@ -93,7 +117,7 @@ var HandlePut = func (m *MongoAdapter, requestWrapper messages.RequestWrapper) (
 	}
 
 	message.Body["updatedAt"] = int32(time.Now().Unix())
-	id := message.Res[strings.LastIndex(message.Res, "/")+1:]
+	id := message.Res[strings.LastIndex(message.Res, "/") + 1:]
 
 	objectToUpdate := make(map[string]interface{})
 	findErr := m.Collection.FindId(bson.ObjectIdHex(id)).One(&objectToUpdate)
@@ -119,10 +143,10 @@ var HandlePut = func (m *MongoAdapter, requestWrapper messages.RequestWrapper) (
 	return
 }
 
-var HandleDelete = func (m *MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
+var HandleDelete = func(m *MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
 
 	message := requestWrapper.Message
-	id := message.Res[strings.LastIndex(message.Res, "/")+1:]
+	id := message.Res[strings.LastIndex(message.Res, "/") + 1:]
 
 	removeErr := m.Collection.RemoveId(bson.ObjectIdHex(id))
 	if removeErr != nil {
