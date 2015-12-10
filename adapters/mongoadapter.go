@@ -9,7 +9,6 @@ import (
 	"time"
 	"strings"
 	"net/http"
-	"fmt"
 )
 
 type MongoAdapter struct {
@@ -70,34 +69,31 @@ var HandleGet = func(m *MongoAdapter, requestWrapper messages.RequestWrapper) (r
 	}
 
 	var results []map[string]interface{}
+	var getErr, parseErr error
 
-	var whereParams map[string]interface{}
-	if message.Parameters["where"] != nil {
-		json.Unmarshal([]byte(message.Parameters["where"][0]), &whereParams)
-	}
-	if whereParams != nil {
-		findErr := m.Collection.Find(whereParams).All(&results)
-		if findErr != nil {
-			err = &utils.Error{http.StatusInternalServerError, "Querying items failed."};
-			return
+	if message.Parameters["where"] == nil && message.Parameters["aggregate"] == nil {            // get all items
+		getErr = m.Collection.Find(nil).All(&results)
+	} else if message.Parameters["where"] != nil {                                               // query items
+		var whereParams map[string]interface{}
+		parseErr = json.Unmarshal([]byte(message.Parameters["where"][0]), &whereParams)
+		if parseErr == nil {
+			getErr = m.Collection.Find(whereParams).All(&results)
+		}
+	} else if message.Parameters["aggregate"] != nil {                                           // aggregate items
+		var aggregateParams interface{}
+		parseErr = json.Unmarshal([]byte(message.Parameters["aggregate"][0]), &aggregateParams)
+		if parseErr == nil {
+			getErr = m.Collection.Pipe(aggregateParams).All(&results)
 		}
 	}
 
-	var aggregateParams interface{}
-	if message.Parameters["aggregate"] != nil {
-		parseErr := json.Unmarshal([]byte(message.Parameters["aggregate"][0]), &aggregateParams)
-		if parseErr != nil {
-			fmt.Println(parseErr)
-			err = &utils.Error{http.StatusBadRequest, "Parsing aggregate json failed."}
-			return
-		}
+	if parseErr != nil {
+		err = &utils.Error{http.StatusBadRequest, "Parsing json parameter failed."}
+		return
 	}
-	if aggregateParams != nil {
-		findErr := m.Collection.Pipe(aggregateParams).All(&results)
-		if findErr != nil {
-			err = &utils.Error{http.StatusInternalServerError, "Agregating items failed."};
-			return
-		}
+	if getErr != nil {
+		err = &utils.Error{http.StatusInternalServerError, "Getting all items failed."};
+		return
 	}
 
 	if results != nil {

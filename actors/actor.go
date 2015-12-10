@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"strings"
 	"net/http"
+	"github.com/eluleci/dock/modifier"
 )
 
 const (
@@ -38,7 +39,7 @@ var RootActor Actor
 var CreateActor = func(res string, level int, parentInbox chan messages.RequestWrapper) (a Actor) {
 
 	var className string
-	if strings.EqualFold(res, ResourceLogin) || strings.EqualFold(res, ResourceRegister)  || strings.EqualFold(res, ResourceResetPassword) {
+	if strings.EqualFold(res, ResourceLogin) || strings.EqualFold(res, ResourceRegister) || strings.EqualFold(res, ResourceResetPassword) {
 		className = ClassUsers
 	} else {
 		className = retrieveClassName(res, level)
@@ -161,9 +162,19 @@ var handleGet = func(a *Actor, requestWrapper messages.RequestWrapper) (response
 		response.Body, err = adapters.HandleGet(a.adapter, requestWrapper)
 	}
 
-	if err == nil {
-		response.Body = filterFields(a, response.Body)
+	if err != nil {
+		return
 	}
+
+	if requestWrapper.Message.Parameters["expand"] != nil {
+		expandConfig := requestWrapper.Message.Parameters["expand"][0]
+		response.Body, err = modifier.ExpandArray(response.Body, expandConfig)
+		if err != nil {
+			return
+		}
+	}
+
+	response.Body = filterFields(a, response.Body)
 	return
 }
 
