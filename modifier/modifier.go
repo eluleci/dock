@@ -2,7 +2,6 @@ package modifier
 
 import (
 	"strings"
-	"fmt"
 	"github.com/eluleci/dock/adapters"
 	"github.com/eluleci/dock/messages"
 	"github.com/eluleci/dock/utils"
@@ -32,8 +31,6 @@ var ExpandArray = func(data map[string]interface{}, config string) (result map[s
 func ExpandItem(data map[string]interface{}, config string) (result map[string]interface{}, err *utils.Error) {
 
 	fields := strings.Split(config, ",")
-	fmt.Println(fields)
-	fmt.Println(data)
 
 	for _, field := range fields {
 
@@ -43,7 +40,6 @@ func ExpandItem(data map[string]interface{}, config string) (result map[string]i
 		if containsChildToExpand {
 			trimmedField = field[0:strings.Index(field, "(")]
 		}
-		fmt.Println("child: " + trimmedField)
 
 		reference := data[trimmedField]
 		if reference == nil {
@@ -63,19 +59,17 @@ func ExpandItem(data map[string]interface{}, config string) (result map[string]i
 		// expanding children
 		if containsChildToExpand {
 			expandConfigOfChild := field[strings.Index(field, "(") + 1:strings.LastIndex(field, ")")]
-			fmt.Println("childToExpand: ")
-			fmt.Println(expandedObject)
-			fmt.Println("expandConfigOfChild: " + expandConfigOfChild)
 
 			var expandedChild map[string]interface{}
 			expandedChild, err = ExpandItem(expandedObject, expandConfigOfChild)
 			if err != nil {
 				return
 			}
-			fmt.Println(expandedChild)
+			_ = expandedChild
 			//			expandedObject[trimmedField] = expandedChild
 		}
 
+		// TODO don't modify original object or totally modify it
 		data[trimmedField] = expandedObject
 	}
 
@@ -84,10 +78,6 @@ func ExpandItem(data map[string]interface{}, config string) (result map[string]i
 }
 
 var fetchData = func(data map[string]interface{}) (object map[string]interface{}, err *utils.Error) {
-	fmt.Println("fetchData: ");
-	fmt.Println(data);
-	fmt.Println(reflect.TypeOf(data["_id"]))
-
 	fieldType := reflect.TypeOf(data["_id"])
 
 	var id string
@@ -108,10 +98,6 @@ var fetchData = func(data map[string]interface{}) (object map[string]interface{}
 	if err != nil {
 		return
 	}
-	fmt.Println("--------")
-	fmt.Println("retrieved object:")
-	fmt.Println(object)
-	fmt.Println("--------")
 	return
 }
 
