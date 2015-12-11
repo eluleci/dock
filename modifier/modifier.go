@@ -7,12 +7,27 @@ import (
 	"github.com/eluleci/dock/utils"
 	"reflect"
 	"gopkg.in/mgo.v2/bson"
-	"fmt"
+	"net/http"
 )
 
 var ExpandArray = func(data map[string]interface{}, config string) (result map[string]interface{}, err *utils.Error) {
 
-	dataArray := data["data"].([]map[string]interface{})
+	if !isValidExpandConfig(config) {
+		err = &utils.Error{http.StatusBadRequest, "Expand config is not valid."}
+		return
+	}
+
+	if data == nil {
+		err = &utils.Error{http.StatusInternalServerError, "Data is nil."}
+		return
+	}
+
+	dataArrayInterface, hasDataArray := data["data"]
+	if !hasDataArray {
+		err = &utils.Error{http.StatusInternalServerError, "Array not found at 'data' field."}
+		return
+	}
+	dataArray := dataArrayInterface.([]map[string]interface{})
 
 	resultArray := make([]map[string]interface{}, len(dataArray))
 	for i, v := range dataArray {
@@ -31,27 +46,25 @@ var ExpandArray = func(data map[string]interface{}, config string) (result map[s
 
 func ExpandItem(data map[string]interface{}, config string) (result map[string]interface{}, err *utils.Error) {
 
-	fields := strings.Split(config, ",")
-	fmt.Println(fields)
+	if !isValidExpandConfig(config) {
+		err = &utils.Error{http.StatusBadRequest, "Expand config is not valid."}
+		return
+	}
 
+	fields := seperateFields(config)
+
+	// expand direct children
 	for _, field := range fields {
-		fmt.Println("directChildsData: " + field)
 
-		trimmedField := field
-		containsChildToExpand := strings.Contains(field, "(")
+		directChildField, childsSubFields := getChildFieldAndSubFields(field)
 
-		if containsChildToExpand {
-			trimmedField = field[0:strings.Index(field, "(")]
-		}
-		fmt.Println("directChild: " + trimmedField)
-
-		reference := data[trimmedField]
-		if reference == nil {
+		reference := data[directChildField]
+		if t := reflect.TypeOf(reference); reference == nil || t == nil || t.Kind() != reflect.Map {
 			continue
 		}
 
 		var expandedObject map[string]interface{}
-		if isValidReference(reference.(map[string]interface{})) {
+		if isValidReference(reference) {
 			expandedObject, err = fetchData(reference.(map[string]interface{}))
 			if err != nil {
 				return
@@ -61,12 +74,10 @@ func ExpandItem(data map[string]interface{}, config string) (result map[string]i
 		}
 
 		// expanding children
-		if containsChildToExpand {
-			expandConfigOfChild := field[strings.Index(field, "(") + 1:strings.LastIndex(field, ")")]
-			fmt.Println("directChildsChildren: " + expandConfigOfChild)
+		if len(childsSubFields) > 0 {
 
 			var expandedChild map[string]interface{}
-			expandedChild, err = ExpandItem(expandedObject, expandConfigOfChild)
+			expandedChild, err = ExpandItem(expandedObject, childsSubFields)
 			if err != nil {
 				return
 			}
@@ -74,12 +85,51 @@ func ExpandItem(data map[string]interface{}, config string) (result map[string]i
 			//			expandedObject[trimmedField] = expandedChild
 		}
 
-		// TODO don't modify original object or totally modify it
-		data[trimmedField] = expandedObject
+		// TODO don't modify original object
+		data[directChildField] = expandedObject
 	}
 
 	result = data
 	return
+}
+
+var seperateFields = func(fields string) (result []string) {
+
+	result = make([]string, 0)
+	lastSplitIndex := 0
+	childLevel := 0
+
+	for i, r := range fields {
+		c := string(r)
+		if c == "(" {
+			childLevel++
+		} else if c == ")" {
+			childLevel--;
+		} else if c == "," && childLevel == 0 {
+			childConfig := fields[lastSplitIndex:i]
+			result = append(result, childConfig)
+			lastSplitIndex = i + 1
+		}
+	}
+	childConfig := fields[lastSplitIndex:]
+	result = append(result, childConfig)
+
+	return
+}
+
+var getChildFieldAndSubFields = func(config string) (field, subFields string) {
+	if !strings.Contains(config, "(") {
+		field = config
+		subFields = ""
+		return
+	}
+	field = config[0:strings.Index(config, "(")]
+	subFields = config[strings.Index(config, "(") + 1:strings.LastIndex(config, ")")]
+	return
+}
+
+var isValidExpandConfig = func(config string) bool {
+	return strings.Count(config, "(") == strings.Count(config, ")")
 }
 
 var fetchData = func(data map[string]interface{}) (object map[string]interface{}, err *utils.Error) {
@@ -106,9 +156,19 @@ var fetchData = func(data map[string]interface{}) (object map[string]interface{}
 	return
 }
 
-var isValidReference = func(data map[string]interface{}) (bool) {
-	t, hasType := data["_type"]
-	_, hasId := data["_id"]
-	_, hasClass := data["_id"]
-	return len(data) == 3 && hasType && hasId && hasClass && t == "reference"
+var isValidReference = func(reference interface{}) (bool) {
+	if reference == nil {
+		return false
+	}
+
+	if t := reflect.TypeOf(reference); t == nil || t.Kind() != reflect.Map {
+		return false
+	}
+
+	referenceAsMap := reference.(map[string]interface{})
+
+	_type, hasType := referenceAsMap["_type"]
+	_, hasId := referenceAsMap["_id"]
+	_, hasClass := referenceAsMap["_id"]
+	return len(referenceAsMap) == 3 && hasType && hasId && hasClass && _type == "reference"
 }
