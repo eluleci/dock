@@ -9,6 +9,8 @@ import (
 	"time"
 	"strings"
 	"net/http"
+	"fmt"
+	"reflect"
 )
 
 type MongoAdapter struct {
@@ -69,30 +71,39 @@ var HandleGet = func(m *MongoAdapter, requestWrapper messages.RequestWrapper) (r
 	}
 
 	var results []map[string]interface{}
-	var getErr, parseErr error
+	var getErr error
 
-	if message.Parameters["where"] == nil && message.Parameters["aggregate"] == nil {            // get all items
-		getErr = m.Collection.Find(nil).All(&results)
-	} else if message.Parameters["where"] != nil {                                               // query items
-		var whereParams map[string]interface{}
-		parseErr = json.Unmarshal([]byte(message.Parameters["where"][0]), &whereParams)
-		if parseErr == nil {
-			getErr = m.Collection.Find(whereParams).All(&results)
-		}
-	} else if message.Parameters["aggregate"] != nil {                                           // aggregate items
-		var aggregateParams interface{}
-		parseErr = json.Unmarshal([]byte(message.Parameters["aggregate"][0]), &aggregateParams)
-		if parseErr == nil {
-			getErr = m.Collection.Pipe(aggregateParams).All(&results)
-		}
-	}
+	whereParam, hasWhereParam, whereParamErr := extractJsonParameter(message, "where")
+	aggregateParam, hasAggregateParam, aggregateParamErr := extractJsonParameter(message, "aggregate")
+	sortParam, hasSortParam, sortParamErr := extractStringParameter(message, "sort")
+	limitParam, _, limitParamErr := extractIntParameter(message, "limit")
+	skipParam, _, skipParamErr := extractIntParameter(message, "skip")
 
-	if parseErr != nil {
-		err = &utils.Error{http.StatusBadRequest, "Parsing json parameter failed."}
+	if aggregateParamErr != nil {err = aggregateParamErr}
+	if whereParamErr != nil {err = whereParamErr}
+	if sortParamErr != nil {err = sortParamErr}
+	if limitParamErr != nil {err = limitParamErr}
+	if skipParamErr != nil {err = skipParamErr}
+	if err != nil {return}
+
+	if hasWhereParam && hasAggregateParam {
+		err = &utils.Error{http.StatusInternalServerError, "Aggregation cannot be used with where parameter."};
 		return
 	}
+
+	if hasAggregateParam {
+		getErr = m.Collection.Pipe(aggregateParam).All(&results)
+	} else {
+		query := m.Collection.Find(whereParam).Skip(skipParam).Limit(limitParam)
+		if hasSortParam {
+			query = query.Sort(sortParam)
+		}
+		getErr = query.All(&results)
+	}
+
 	if getErr != nil {
-		err = &utils.Error{http.StatusInternalServerError, "Getting all items failed."};
+		err = &utils.Error{http.StatusInternalServerError, "Getting items failed."};
+		fmt.Println(getErr)
 		return
 	}
 
@@ -150,5 +161,72 @@ var HandleDelete = func(m *MongoAdapter, requestWrapper messages.RequestWrapper)
 		return
 	}
 
+	return
+}
+
+var extractJsonParameter = func(message messages.Message, key string) (value interface{}, hasParam bool, err *utils.Error) {
+
+	var paramArray []string
+	paramArray, hasParam = message.Parameters[key]
+
+	if hasParam {
+		parseErr := json.Unmarshal([]byte(paramArray[0]), &value)
+		if parseErr != nil {
+			fmt.Println(parseErr)
+			err = &utils.Error{http.StatusBadRequest, "Parsing " + key + " parameter failed."}
+		}
+	}
+	return
+}
+
+var extractStringParameter = func(message messages.Message, key string) (value string, hasParam bool, err *utils.Error) {
+
+	var paramArray []string
+	paramArray, hasParam = message.Parameters[key]
+
+	if hasParam {
+		var paramValue interface{}
+		parseErr := json.Unmarshal([]byte(paramArray[0]), &paramValue)
+		if parseErr != nil {
+			fmt.Println(parseErr)
+			err = &utils.Error{http.StatusBadRequest, "Parsing " + key + " parameter failed."}
+		}
+
+		fieldType := reflect.TypeOf(paramValue)
+		fmt.Println(fieldType)
+
+		if fieldType == nil || fieldType.Kind() != reflect.String {
+			value = ""
+			err = &utils.Error{http.StatusBadRequest, "The key '" + key + "' must be a valid string."}
+			return
+		}
+		value = paramValue.(string)
+	}
+	return
+}
+
+var extractIntParameter = func(message messages.Message, key string) (value int, hasParam bool, err *utils.Error) {
+
+	var paramArray []string
+	paramArray, hasParam = message.Parameters[key]
+
+	if hasParam {
+		var paramValue interface{}
+		parseErr := json.Unmarshal([]byte(paramArray[0]), &paramValue)
+		if parseErr != nil {
+			fmt.Println(parseErr)
+			err = &utils.Error{http.StatusBadRequest, "Parsing " + key + " parameter failed."}
+		}
+
+		fieldType := reflect.TypeOf(paramValue)
+		fmt.Println(fieldType)
+
+		if fieldType == nil || fieldType.Kind() != reflect.Float64 {
+			value = 0
+			err = &utils.Error{http.StatusBadRequest, "The key '" + key + "' must be an integer."}
+			return
+		}
+		value = int(paramValue.(float64))
+	}
 	return
 }

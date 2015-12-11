@@ -7,6 +7,7 @@ import (
 	"github.com/eluleci/dock/utils"
 	"reflect"
 	"gopkg.in/mgo.v2/bson"
+	"fmt"
 )
 
 var ExpandArray = func(data map[string]interface{}, config string) (result map[string]interface{}, err *utils.Error) {
@@ -31,8 +32,10 @@ var ExpandArray = func(data map[string]interface{}, config string) (result map[s
 func ExpandItem(data map[string]interface{}, config string) (result map[string]interface{}, err *utils.Error) {
 
 	fields := strings.Split(config, ",")
+	fmt.Println(fields)
 
 	for _, field := range fields {
+		fmt.Println("directChildsData: " + field)
 
 		trimmedField := field
 		containsChildToExpand := strings.Contains(field, "(")
@@ -40,6 +43,7 @@ func ExpandItem(data map[string]interface{}, config string) (result map[string]i
 		if containsChildToExpand {
 			trimmedField = field[0:strings.Index(field, "(")]
 		}
+		fmt.Println("directChild: " + trimmedField)
 
 		reference := data[trimmedField]
 		if reference == nil {
@@ -59,6 +63,7 @@ func ExpandItem(data map[string]interface{}, config string) (result map[string]i
 		// expanding children
 		if containsChildToExpand {
 			expandConfigOfChild := field[strings.Index(field, "(") + 1:strings.LastIndex(field, ")")]
+			fmt.Println("directChildsChildren: " + expandConfigOfChild)
 
 			var expandedChild map[string]interface{}
 			expandedChild, err = ExpandItem(expandedObject, expandConfigOfChild)
