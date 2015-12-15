@@ -27,7 +27,7 @@ var HandlePost = func(m *MongoAdapter, requestWrapper messages.RequestWrapper) (
 	createdAt := int32(time.Now().Unix())
 
 	// additional fields
-	message.Body["_id"] = objectId
+	message.Body["_id"] = objectId.Hex()
 	message.Body["createdAt"] = createdAt
 	message.Body["updatedAt"] = createdAt
 
