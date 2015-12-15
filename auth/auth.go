@@ -85,7 +85,7 @@ var HandleSignUp = func(requestWrapper messages.RequestWrapper, dbAdapter *adapt
 		return
 	}
 
-	accessToken, tokenErr := generateToken(response.Body["_id"].(bson.ObjectId), response.Body)
+	accessToken, tokenErr := generateToken(response.Body["_id"].(string), response.Body)
 	if tokenErr == nil {
 		response.Body["accessToken"] = accessToken
 		response.Status = http.StatusCreated
@@ -302,7 +302,7 @@ var HandleLogin = func(requestWrapper messages.RequestWrapper, dbAdapter *adapte
 		response.Body = accountData
 
 		var accessToken string
-		accessToken, err = generateToken(accountData["_id"].(bson.ObjectId), accountData)
+		accessToken, err = generateToken(accountData["_id"].(string), accountData)
 		if err == nil {
 			response.Body["accessToken"] = accessToken
 			response.Status = http.StatusOK
@@ -580,7 +580,7 @@ var getAccountData = func(requestWrapper messages.RequestWrapper, dbAdapter *ada
 	return
 }
 
-var generateToken = func(userId bson.ObjectId, userData map[string]interface{}) (tokenString string, err *utils.Error) {
+var generateToken = func(userId string, userData map[string]interface{}) (tokenString string, err *utils.Error) {
 
 	token := jwt.New(jwt.SigningMethodHS256)
 
