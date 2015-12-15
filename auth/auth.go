@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"time"
 	"github.com/dgrijalva/jwt-go"
-	"gopkg.in/mgo.v2/bson"
 	"github.com/eluleci/dock/utils"
 	"strings"
 	"io/ioutil"
@@ -355,7 +354,7 @@ var HandleResetPassword = func(requestWrapper messages.RequestWrapper, dbAdapter
 
 	updatePasswordRW := messages.RequestWrapper{}
 	updatePasswordM := messages.Message{}
-	updatePasswordM.Res = ResourceTypeUsers + "/" + accountData["_id"].(bson.ObjectId).Hex()
+	updatePasswordM.Res = ResourceTypeUsers + "/" + accountData["_id"].(string)
 	updatePasswordM.Body = map[string]interface{}{
 		"password": string(hashedPassword),
 	}

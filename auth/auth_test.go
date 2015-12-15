@@ -5,7 +5,6 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/eluleci/dock/adapters"
 	"github.com/eluleci/dock/messages"
-	"gopkg.in/mgo.v2/bson"
 	"net/http"
 	"github.com/eluleci/dock/utils"
 	"net/http/httptest"
@@ -110,7 +109,7 @@ func TestHandleSignUp(t *testing.T) {
 		}
 
 		var called bool
-		generateToken  = func(userId bson.ObjectId, userData map[string]interface{}) (tokenString string, err *utils.Error) {
+		generateToken = func(userId string, userData map[string]interface{}) (tokenString string, err *utils.Error) {
 			called = true
 			err = &utils.Error{http.StatusConflict, "Exists."}
 			return
@@ -136,14 +135,14 @@ func TestHandleSignUp(t *testing.T) {
 			return
 		}
 
-		generateToken  = func(userId bson.ObjectId, userData map[string]interface{}) (tokenString string, err *utils.Error) {
+		generateToken = func(userId string, userData map[string]interface{}) (tokenString string, err *utils.Error) {
 			err = &utils.Error{http.StatusInternalServerError, "Generating token failed."}
 			return
 		}
 
 		adapters.HandlePost = func (m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
 			response = make(map[string]interface{})
-			response["_id"] = bson.ObjectIdHex("564f1a28e63bce219e1cc745")
+			response["_id"] = "564f1a28e63bce219e1cc745"
 			return
 		}
 
@@ -170,7 +169,7 @@ func TestHandleSignUp(t *testing.T) {
 
 		adapters.HandlePost = func (m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
 			response = make(map[string]interface{})
-			response["_id"] = bson.ObjectIdHex("564f1a28e63bce219e1cc745")
+			response["_id"] = "564f1a28e63bce219e1cc745"
 			return
 		}
 
@@ -197,7 +196,7 @@ func TestHandleSignUp(t *testing.T) {
 
 		adapters.HandlePost = func (m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
 			response = make(map[string]interface{})
-			response["_id"] = bson.ObjectIdHex("564f1a28e63bce219e1cc745")
+			response["_id"] = "564f1a28e63bce219e1cc745"
 			return
 		}
 
@@ -220,14 +219,14 @@ func TestHandleSignUp(t *testing.T) {
 			return
 		}
 
-		generateToken  = func(userId bson.ObjectId, userData map[string]interface{}) (tokenString string, err *utils.Error) {
+		generateToken = func(userId string, userData map[string]interface{}) (tokenString string, err *utils.Error) {
 			tokenString = ""
 			return
 		}
 
 		adapters.HandlePost = func (m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
 			response = make(map[string]interface{})
-			response["_id"] = bson.ObjectIdHex("564f1a28e63bce219e1cc745")
+			response["_id"] = "564f1a28e63bce219e1cc745"
 			return
 		}
 
@@ -453,7 +452,7 @@ func TestFacebookRegistration(t *testing.T) {
 		getAccountData = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (accountData map[string]interface{}, err *utils.Error) {
 			called = true
 			accountData = make(map[string]interface{})
-			accountData["_id"] = bson.ObjectIdHex("564f1a28e63bce219e1cc745")
+			accountData["_id"] = "564f1a28e63bce219e1cc745"
 			// returning existing account
 			return
 		}
@@ -631,7 +630,7 @@ func TestGoogleRegistration(t *testing.T) {
 		getAccountData = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (accountData map[string]interface{}, err *utils.Error) {
 			called = true
 			accountData = make(map[string]interface{})
-			accountData["_id"] = bson.ObjectIdHex("564f1a28e63bce219e1cc745")
+			accountData["_id"] = "564f1a28e63bce219e1cc745"
 			// returning existing account
 			return
 		}
@@ -674,7 +673,7 @@ func TestHandleLogin(t *testing.T) {
 			accountData = make(map[string]interface{})
 			// hased of 'zuhaha'
 			accountData["password"] = "$2a$10$wqvcYHiRvoCy5ZUurNz9wuokDH1DyXjfd8k6Hk4DSJKui76gx1yrO"
-			accountData["_id"] = bson.ObjectIdHex("564f1a28e63bce219e1cc745")
+			accountData["_id"] = "564f1a28e63bce219e1cc745"
 			return
 		}
 
@@ -698,7 +697,7 @@ func TestHandleLogin(t *testing.T) {
 			accountData = make(map[string]interface{})
 			// hased of 'zuhaha'
 			accountData["password"] = "$2a$10$wqvcYHiRvoCy5ZUurNz9wuokDH1DyXjfd8k6Hk4DSJKui76gx1yrO"
-			accountData["_id"] = bson.ObjectIdHex("564f1a28e63bce219e1cc745")
+			accountData["_id"] = "564f1a28e63bce219e1cc745"
 			return
 		}
 
@@ -720,7 +719,7 @@ func TestHandleLogin(t *testing.T) {
 			accountData = make(map[string]interface{})
 			// hased of 'zuhaha'
 			accountData["password"] = "$2a$10$wqvcYHiRvoCy5ZUurNz9wuokDH1DyXjfd8k6Hk4DSJKui76gx1yrO"
-			accountData["_id"] = bson.ObjectIdHex("564f1a28e63bce219e1cc745")
+			accountData["_id"] = "564f1a28e63bce219e1cc745"
 			return
 		}
 
@@ -761,11 +760,11 @@ func TestHandleLogin(t *testing.T) {
 			accountData = make(map[string]interface{})
 			// hased of 'zuhaha'
 			accountData["password"] = "$2a$10$wqvcYHiRvoCy5ZUurNz9wuokDH1DyXjfd8k6Hk4DSJKui76gx1yrO"
-			accountData["_id"] = bson.ObjectIdHex("564f1a28e63bce219e1cc745")
+			accountData["_id"] = "564f1a28e63bce219e1cc745"
 			return
 		}
 
-		generateToken  = func(userId bson.ObjectId, userData map[string]interface{}) (tokenString string, err *utils.Error) {
+		generateToken = func(userId string, userData map[string]interface{}) (tokenString string, err *utils.Error) {
 			err = &utils.Error{http.StatusInternalServerError, "Generating token failed."}
 			return
 		}
@@ -850,7 +849,7 @@ func TestResetPassword(t *testing.T) {
 
 		getAccountData = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (accountData map[string]interface{}, err *utils.Error) {
 			accountData = make(map[string]interface{})
-			accountData["_id"] = bson.ObjectIdHex("564f1a28e63bce219e1cc745")
+			accountData["_id"] = "564f1a28e63bce219e1cc745"
 			return
 		}
 
@@ -875,7 +874,7 @@ func TestResetPassword(t *testing.T) {
 
 		getAccountData = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (accountData map[string]interface{}, err *utils.Error) {
 			accountData = make(map[string]interface{})
-			accountData["_id"] = bson.ObjectIdHex("564f1a28e63bce219e1cc745")
+			accountData["_id"] = "564f1a28e63bce219e1cc745"
 			return
 		}
 
