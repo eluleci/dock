@@ -168,7 +168,11 @@ var handleGet = func(a *Actor, requestWrapper messages.RequestWrapper) (response
 
 	if requestWrapper.Message.Parameters["expand"] != nil {
 		expandConfig := requestWrapper.Message.Parameters["expand"][0]
-		response.Body, err = modifier.ExpandArray(response.Body, expandConfig)
+		if _, hasDataArray := response.Body["data"]; hasDataArray {
+			response.Body, err = modifier.ExpandArray(response.Body, expandConfig)
+		} else {
+			response.Body, err = modifier.ExpandItem(response.Body, expandConfig)
+		}
 		if err != nil {
 			return
 		}
