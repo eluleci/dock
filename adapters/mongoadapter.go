@@ -16,6 +16,7 @@ import (
 	"mime/multipart"
 	"io"
 	"errors"
+	"net/url"
 )
 
 type MongoAdapter struct {
@@ -64,17 +65,25 @@ var HandlePost = func(m *MongoAdapter, requestWrapper messages.RequestWrapper) (
 		for _, fileHeaders := range requestWrapper.Message.MultipartForm.File {
 			for _, fileHeader := range fileHeaders {
 
+				objectId := bson.NewObjectId()
+				now := time.Now()
+
 				file, _ := fileHeader.Open()
-				gridFile, mongoErr := MongoDB.GridFS("fs").Create(fileHeader.Filename)
+
+				// unescaping first because the name is escaped in a bad way.
+				fileName, _ := url.QueryUnescape(fileHeader.Filename)
+				fileName = strings.Replace(fileName, "/", "", -1)
+				fileName = strings.Replace(fileName, " ", "", -1)
+				fileName = strings.Replace(fileName, ":", "", -1)
+				fileName = url.QueryEscape(fileName)
+				fileName = objectId.Hex() + "-" + fileName
+				gridFile, mongoErr := MongoDB.GridFS("fs").Create(fileName)
 				if mongoErr != nil {
 					err = &utils.Error{http.StatusInternalServerError, "Creating file failed."}
 					return
 				}
 
-				objectId := bson.NewObjectId()
-				now := time.Now()
-
-				gridFile.SetId(objectId.Hex())
+				gridFile.SetId(fileName)
 				gridFile.SetUploadDate(now)
 				gridFile.SetName(fileHeader.Filename)
 				if writeErr := writeToGridFile(file, gridFile); writeErr != nil {
@@ -83,7 +92,7 @@ var HandlePost = func(m *MongoAdapter, requestWrapper messages.RequestWrapper) (
 				}
 
 				response = make(map[string]interface{})
-				response["_id"] = objectId.Hex()
+				response["_id"] = fileName
 				response["createdAt"] = int32(now.Unix())
 			}
 		}
