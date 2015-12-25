@@ -1,0 +1,21 @@
+{
+  "mongo": {
+    "address":  "104.155.22.202",
+    "name":     "biddy-db"
+  },
+  "facebook": {
+    "appId": "941537012570775",
+    "appToken": "941537012570775|XGhNJS-Ej6GD4pXWzZocctZHV7M"
+  },
+  "google": {
+    "clientId": "583057551622-lmhk0vg6ne9jp7l83jifm0qvj0jf8id3.apps.googleusercontent.com"
+  },
+  "resetPassword": {
+    "senderEmail": "info@biddyapp.com",
+    "senderEmailPassword": "ckdrlzkbfabyntur",
+    "smtpServer": "smtp.gmail.com",
+    "smtpPort": "587",
+    "mailSubject": "Reset password of Biddy Account",
+    "mailContentTemplate": "<html><head></head><body><p>Dear Biddy user,</p> <p>As you requested, a new password is generated for you. You can use the password below to login to Biddy. </p><p><b>%s</b> </p><p>Please change your password with something you choose after your first login with this generated password. </p><p>Thanks,<br/>Biddy Team</p></body></html>"
+  }
+}

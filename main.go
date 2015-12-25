@@ -2,7 +2,6 @@ package main
 
 import (
 	"net/http"
-	"gopkg.in/mgo.v2"
 	"github.com/eluleci/dock/config"
 	"github.com/eluleci/dock/actors"
 	"github.com/eluleci/dock/adapters"
@@ -24,15 +23,15 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Headers",
 			"Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
 	}
-	// Stop here if its Preflighted OPTIONS request
+	// Stop here if its Pre-flighted OPTIONS request
 	if r.Method == "OPTIONS" {
 		return
 	}
 
 	res := r.URL.Path
 	if (strings.Contains(res, ".ico")) {
-		utils.Log("info", "File request.")
-		// TODO: handle file requests
+		utils.Log("info", "Browser file request.")
+		// TODO: handle browser file requests
 		return
 	}
 
@@ -57,6 +56,11 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(response.Status)
 	}
 
+	if response.RawBody != nil {
+		w.Header().Set("Content-Type", "text/plain")
+		w.Write(response.RawBody)
+	}
+
 	if response.Body != nil {
 		bytes, err2 := json.Marshal(response.Body)
 		if err2 != nil {
@@ -79,9 +83,8 @@ func main() {
 	}
 	config.SystemConfig = c
 
-	// creating database instance
-	var dbErr *utils.Error
-	adapters.MongoDB, dbErr = connectToDB(config.SystemConfig)
+	// connecting to database
+	dbErr := adapters.Connect(config.SystemConfig)
 	if dbErr != nil {
 		utils.Log("fatal", dbErr.Message)
 		os.Exit(dbErr.Code)
@@ -111,28 +114,6 @@ func readConfig() (configuration config.Config, err *utils.Error) {
 	return
 }
 
-func connectToDB(config config.Config) (db *mgo.Database, err *utils.Error) {
-
-	address, hasAddress := config.Mongo["address"]
-	name, hasName := config.Mongo["name"]
-	if !hasAddress || !hasName {
-		err = &utils.Error{http.StatusInternalServerError, "Database 'address' and 'name' must be specified in dock-config.json."};
-		return
-	}
-
-	session, mongoerr := mgo.Dial(address)
-	if mongoerr != nil {
-		err = &utils.Error{http.StatusInternalServerError, "Database connection failed."};
-		return
-	}
-
-	// TODO: find a proper way to close the session
-	// defer session.Close()
-
-	db = session.DB(name)
-	return
-}
-
 func parseRequest(r *http.Request) (requestWrapper messages.RequestWrapper, err *utils.Error) {
 
 	res := r.URL.Path
@@ -142,10 +123,21 @@ func parseRequest(r *http.Request) (requestWrapper messages.RequestWrapper, err 
 	requestWrapper.Message.Headers = r.Header
 	requestWrapper.Message.Parameters = r.URL.Query()
 
-	readErr := json.NewDecoder(r.Body).Decode(&requestWrapper.Message.Body)
-	if readErr != nil && readErr != io.EOF {
-		err = &utils.Error{http.StatusBadRequest, "Request body is not a valid json."}
-		return
+	contentType := r.Header.Get("Content-Type")
+	if strings.Contains(contentType, "multipart/form-data") {
+		parseErr := r.ParseMultipartForm(32 << 20)
+		if parseErr != nil {
+			err = &utils.Error{http.StatusBadRequest, "Form data is not valid. Parsing multipart form failed."}
+			return
+		}
+		requestWrapper.Message.MultipartForm = r.MultipartForm
+
+	} else {
+		readErr := json.NewDecoder(r.Body).Decode(&requestWrapper.Message.Body)
+		if readErr != nil && readErr != io.EOF {
+			err = &utils.Error{http.StatusBadRequest, "Request body is not a valid json."}
+			return
+		}
 	}
 
 	return

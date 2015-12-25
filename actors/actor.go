@@ -16,7 +16,9 @@ const (
 	ActorTypeCollection = "resource"
 	ActorTypeObject = "object"
 	ClassUsers = "users"
+	ClassFiles = "files"
 	ResourceTypeUsers = "/users"
+	ResourceTypeFiles = "/files"
 	ResourceRegister = "/register"
 	ResourceLogin = "/login"
 	ResourceResetPassword = "/resetpassword"
@@ -156,9 +158,18 @@ var handleRequest = func(a *Actor, requestWrapper messages.RequestWrapper) (resp
 
 var handleGet = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err *utils.Error) {
 
-	if strings.EqualFold(a.actorType, ActorTypeObject) {         // get object by id
-		response.Body, err = adapters.HandleGetById(a.adapter, requestWrapper)
-	} else if strings.EqualFold(a.actorType, ActorTypeCollection) {        // query objects
+	isFileClass := strings.EqualFold(a.class, ClassFiles)
+	isObjectTypeActor := strings.EqualFold(a.actorType, ActorTypeObject)
+	isCollectionTypeActor := strings.EqualFold(a.actorType, ActorTypeCollection)
+
+	if isObjectTypeActor {
+		id := requestWrapper.Message.Res[strings.LastIndex(requestWrapper.Message.Res, "/") + 1:]
+		if isFileClass { 	// get file by id
+			response.RawBody, err = adapters.GetFile(id)
+		} else {			// get object by id
+			response.Body, err = adapters.HandleGetById(a.adapter, requestWrapper)
+		}
+	} else if isCollectionTypeActor {                    // query objects
 		response.Body, err = adapters.HandleGet(a.adapter, requestWrapper)
 	}
 
@@ -194,7 +205,7 @@ var handlePost = func(a *Actor, requestWrapper messages.RequestWrapper) (respons
 		response.Status = http.StatusMethodNotAllowed
 	} else if strings.EqualFold(a.actorType, ActorTypeCollection) {                // create object request
 		response.Body, err = adapters.HandlePost(a.adapter, requestWrapper)
-		response.Status = http.StatusCreated
+		if err == nil {response.Status = http.StatusCreated}
 	} else if strings.EqualFold(a.actorType, ActorTypeObject) {                    // post on objects are not allowed
 		response.Status = http.StatusBadRequest
 	}
