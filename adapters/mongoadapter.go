@@ -16,6 +16,7 @@ import (
 	"mime/multipart"
 	"io"
 	"errors"
+	"encoding/base64"
 	"net/url"
 )
 
@@ -52,48 +53,82 @@ var HandlePost = func(m *MongoAdapter, requestWrapper messages.RequestWrapper) (
 
 	if strings.EqualFold("/files", requestWrapper.Res) {
 
-		if requestWrapper.Message.MultipartForm == nil {
-			err = &utils.Error{http.StatusBadRequest, "Uploading file request must contain multipart form data."}
+		if requestWrapper.Message.MultipartForm == nil {    // data is in the body
+
+			objectId := bson.NewObjectId()
+			now := time.Now()
+			fileName := objectId.Hex()
+
+			gridFile, mongoErr := MongoDB.GridFS("fs").Create(fileName)
+			if mongoErr != nil {
+				fmt.Println(mongoErr)
+				err = &utils.Error{http.StatusInternalServerError, "Creating file failed."}
+				return
+			}
+			gridFile.SetId(fileName)
+			gridFile.SetName(fileName)
+			gridFile.SetUploadDate(now)
+
+			dec := base64.NewDecoder(base64.StdEncoding, requestWrapper.Message.ReqBodyRaw)
+			_, copyErr := io.Copy(gridFile, dec)
+			if copyErr != nil {
+				fmt.Println(copyErr)
+				err = &utils.Error{http.StatusInternalServerError, "Writing file failed."}
+				return
+			}
+
+			closeErr := gridFile.Close()
+			if closeErr != nil {
+				fmt.Println(closeErr)
+				err = &utils.Error{http.StatusInternalServerError, "Closing file failed."}
+				return
+			}
+
+			response = make(map[string]interface{})
+			response["_id"] = fileName
+			response["createdAt"] = int32(now.Unix())
 			return
-		}
+		} else {
 
-		if len(requestWrapper.Message.MultipartForm.File) > 1 {
-			err = &utils.Error{http.StatusBadRequest, "Only one file can be uploaded with one request."}
-			return
-		}
+			if len(requestWrapper.Message.MultipartForm.File) > 1 {
+				err = &utils.Error{http.StatusBadRequest, "Only one file can be uploaded with one request."}
+				return
+			}
 
-		for _, fileHeaders := range requestWrapper.Message.MultipartForm.File {
-			for _, fileHeader := range fileHeaders {
+			for _, fileHeaders := range requestWrapper.Message.MultipartForm.File {
+				for _, fileHeader := range fileHeaders {
 
-				objectId := bson.NewObjectId()
-				now := time.Now()
+					objectId := bson.NewObjectId()
+					now := time.Now()
 
-				file, _ := fileHeader.Open()
+					file, _ := fileHeader.Open()
 
-				// unescaping first because the name is escaped in a bad way.
-				fileName, _ := url.QueryUnescape(fileHeader.Filename)
-				fileName = strings.Replace(fileName, "/", "", -1)
-				fileName = strings.Replace(fileName, " ", "", -1)
-				fileName = strings.Replace(fileName, ":", "", -1)
-				fileName = url.QueryEscape(fileName)
-				fileName = objectId.Hex() + "-" + fileName
-				gridFile, mongoErr := MongoDB.GridFS("fs").Create(fileName)
-				if mongoErr != nil {
-					err = &utils.Error{http.StatusInternalServerError, "Creating file failed."}
+					// unescaping first because the name is escaped in a bad way.
+					fileName, _ := url.QueryUnescape(fileHeader.Filename)
+					fileName = strings.Replace(fileName, "/", "", -1)
+					fileName = strings.Replace(fileName, " ", "", -1)
+					fileName = strings.Replace(fileName, ":", "", -1)
+					fileName = url.QueryEscape(fileName)
+					fileName = objectId.Hex() + "-" + fileName
+					gridFile, mongoErr := MongoDB.GridFS("fs").Create(fileName)
+					if mongoErr != nil {
+						err = &utils.Error{http.StatusInternalServerError, "Creating file failed."}
+						return
+					}
+
+					gridFile.SetId(fileName)
+					gridFile.SetUploadDate(now)
+					gridFile.SetName(fileHeader.Filename)
+					if writeErr := writeToGridFile(file, gridFile); writeErr != nil {
+						err = &utils.Error{http.StatusInternalServerError, "Writing file failed."}
+						return
+					}
+
+					response = make(map[string]interface{})
+					response["_id"] = fileName
+					response["createdAt"] = int32(now.Unix())
 					return
 				}
-
-				gridFile.SetId(fileName)
-				gridFile.SetUploadDate(now)
-				gridFile.SetName(fileHeader.Filename)
-				if writeErr := writeToGridFile(file, gridFile); writeErr != nil {
-					err = &utils.Error{http.StatusInternalServerError, "Writing file failed."}
-					return
-				}
-
-				response = make(map[string]interface{})
-				response["_id"] = fileName
-				response["createdAt"] = int32(now.Unix())
 			}
 		}
 
@@ -148,6 +183,7 @@ var GetFile = func(id string) (response []byte, err *utils.Error) {
 
 	file, mongoErr := MongoDB.GridFS("fs").OpenId(id)
 	if mongoErr != nil {
+		fmt.Println(mongoErr)
 		err = &utils.Error{http.StatusNotFound, "File not found."};
 		return
 	}
@@ -155,6 +191,7 @@ var GetFile = func(id string) (response []byte, err *utils.Error) {
 	response = make([]byte, file.Size())
 	_, printErr := file.Read(response)
 	if printErr != nil {
+		fmt.Println(printErr)
 		err = &utils.Error{http.StatusInternalServerError, "Printing file failed."};
 	}
 	return
@@ -335,6 +372,29 @@ var extractIntParameter = func(message messages.Message, key string) (value int,
 var writeToGridFile = func(file multipart.File, gridFile *mgo.GridFile) error {
 	reader := bufio.NewReader(file)
 	defer func() { file.Close() }()
+	// make a buffer to keep chunks that are read
+	buf := make([]byte, 1024)
+	for {
+		// read a chunk
+		n, err := reader.Read(buf)
+		if err != nil && err != io.EOF {
+			return errors.New("Could not read the input file")
+		}
+		if n == 0 {
+			break
+		}
+		// write a chunk
+		if _, err := gridFile.Write(buf[:n]); err != nil {
+			return errors.New("Could not write to GridFs for " + gridFile.Name())
+		}
+	}
+	gridFile.Close()
+	return nil
+}
+
+var writeBodyToGridFile = func(body io.ReadCloser, gridFile *mgo.GridFile) error {
+	reader := bufio.NewReader(body)
+	defer func() { body.Close() }()
 	// make a buffer to keep chunks that are read
 	buf := make([]byte, 1024)
 	for {

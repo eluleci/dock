@@ -1,5 +1,8 @@
 package messages
-import "mime/multipart"
+import (
+	"mime/multipart"
+	"io"
+)
 
 type Message struct {
 	Rid           int `json:"rid,omitempty"`
@@ -10,6 +13,7 @@ type Message struct {
 	MultipartForm *multipart.Form `json:"multipart,omitempty"`
 	Body          map[string]interface{} `json:"body,omitempty"`
 	RawBody       []byte `json:"rawbody,omitempty"`	// used for files
+	ReqBodyRaw    io.ReadCloser
 	Status        int `json:"status,omitempty"` // used only in responses
 }
 

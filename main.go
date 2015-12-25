@@ -124,14 +124,18 @@ func parseRequest(r *http.Request) (requestWrapper messages.RequestWrapper, err 
 	requestWrapper.Message.Parameters = r.URL.Query()
 
 	contentType := r.Header.Get("Content-Type")
-	if strings.Contains(contentType, "multipart/form-data") {
-		parseErr := r.ParseMultipartForm(32 << 20)
-		if parseErr != nil {
-			err = &utils.Error{http.StatusBadRequest, "Form data is not valid. Parsing multipart form failed."}
-			return
-		}
-		requestWrapper.Message.MultipartForm = r.MultipartForm
+	if strings.Contains(res, "files") {
 
+		if strings.Contains(contentType, "multipart/form-data") {	// file upload with multipart data
+			parseErr := r.ParseMultipartForm(32 << 20)
+			if parseErr != nil {
+				err = &utils.Error{http.StatusBadRequest, "Form data is not valid. Parsing multipart form failed."}
+				return
+			}
+			requestWrapper.Message.MultipartForm = r.MultipartForm
+		} else {													// file upload with base64 in body
+			requestWrapper.Message.ReqBodyRaw = r.Body
+		}
 	} else {
 		readErr := json.NewDecoder(r.Body).Decode(&requestWrapper.Message.Body)
 		if readErr != nil && readErr != io.EOF {
