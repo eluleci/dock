@@ -62,7 +62,7 @@ var defaultPermissions = map[string]bool{
 
 var httpClient = http.DefaultClient
 
-var HandleSignUp = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (response messages.Message, err *utils.Error) {
+var HandleSignUp = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (response messages.Message, hookBody map[string]interface{}, err *utils.Error) {
 
 	_, hasUsername := requestWrapper.Message.Body["username"]
 	_, hasEmail := requestWrapper.Message.Body["email"]
@@ -70,11 +70,11 @@ var HandleSignUp = func(requestWrapper messages.RequestWrapper, dbAdapter *adapt
 	_, hasGoogle := requestWrapper.Message.Body["google"]
 
 	if hasUsername || hasEmail {
-		response.Body, err = createLocalAccount(requestWrapper, dbAdapter)
+		response.Body, hookBody, err = createLocalAccount(requestWrapper, dbAdapter)
 	} else if hasFacebook {
-		response.Body, err = handleFacebookAuth(requestWrapper, dbAdapter, httpClient)
+		response.Body, hookBody, err = handleFacebookAuth(requestWrapper, dbAdapter, httpClient)
 	}  else if hasGoogle {
-		response.Body, err = handleGoogleAuth(requestWrapper, dbAdapter, httpClient)
+		response.Body, hookBody, err = handleGoogleAuth(requestWrapper, dbAdapter, httpClient)
 	} else {
 		err = &utils.Error{http.StatusBadRequest, "No suitable registration data found."}
 		return
@@ -94,7 +94,7 @@ var HandleSignUp = func(requestWrapper messages.RequestWrapper, dbAdapter *adapt
 	return
 }
 
-var createLocalAccount = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (response map[string]interface{}, err *utils.Error) {
+var createLocalAccount = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
 
 	_, hasUsername := requestWrapper.Message.Body["username"]
 	_, hasEmail := requestWrapper.Message.Body["email"]
@@ -118,11 +118,11 @@ var createLocalAccount = func(requestWrapper messages.RequestWrapper, dbAdapter 
 	}
 	requestWrapper.Message.Body["password"] = string(hashedPassword)
 
-	response, err = adapters.HandlePost(dbAdapter, requestWrapper)
+	response, hookBody, err = adapters.HandlePost(dbAdapter, requestWrapper)
 	return
 }
 
-var handleFacebookAuth = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter, HTTPClient *http.Client) (response map[string]interface{}, err *utils.Error) {
+var handleFacebookAuth = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter, HTTPClient *http.Client) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
 
 	facebookData, _ := requestWrapper.Message.Body["facebook"]
 	facebookDataAsMap := facebookData.(map[string]interface{})
@@ -198,7 +198,7 @@ var handleFacebookAuth = func(requestWrapper messages.RequestWrapper, dbAdapter 
 	existingAccount, _ := getAccountData(requestWrapper, dbAdapter)
 
 	if existingAccount == nil {
-		response, err = adapters.HandlePost(dbAdapter, requestWrapper)
+		response, hookBody, err = adapters.HandlePost(dbAdapter, requestWrapper)
 		response["isNewUser"] = true
 	} else {
 		response = existingAccount
@@ -208,7 +208,7 @@ var handleFacebookAuth = func(requestWrapper messages.RequestWrapper, dbAdapter 
 	return
 }
 
-var handleGoogleAuth = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter, HTTPClient *http.Client) (response map[string]interface{}, err *utils.Error) {
+var handleGoogleAuth = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter, HTTPClient *http.Client) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
 
 	googleData, _ := requestWrapper.Message.Body["google"]
 	googleDataAsMap := googleData.(map[string]interface{})
@@ -264,7 +264,7 @@ var handleGoogleAuth = func(requestWrapper messages.RequestWrapper, dbAdapter *a
 	existingAccount, _ := getAccountData(requestWrapper, dbAdapter)
 
 	if existingAccount == nil {
-		response, err = adapters.HandlePost(dbAdapter, requestWrapper)
+		response, hookBody, err = adapters.HandlePost(dbAdapter, requestWrapper)
 		response["isNewUser"] = true
 	} else {
 		response = existingAccount
@@ -391,7 +391,7 @@ var sendNewPasswordEmail = func(smtpServer, smtpPost, senderEmail, senderEmailPa
 	return
 }
 
-var IsGranted = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (isGranted bool, err *utils.Error) {
+var IsGranted = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (isGranted bool, user map[string]interface{}, err *utils.Error) {
 
 	var permissions map[string]bool
 
@@ -402,7 +402,8 @@ var IsGranted = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters
 	}
 
 	var roles []string
-	roles, err = getRolesOfUser(requestWrapper)
+	user, err = getUser(requestWrapper)
+	roles, err = getRolesOfUser(user)
 	if err != nil {
 		return
 	}
@@ -427,9 +428,7 @@ var IsGranted = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters
 	return
 }
 
-func getRolesOfUser(requestWrapper messages.RequestWrapper) (roles []string, err *utils.Error) {
-	// TODO get roles recursively. (inherited roles)
-
+func getUser(requestWrapper messages.RequestWrapper) (user map[string]interface{}, err *utils.Error) {
 	dbAdapter := &adapters.MongoAdapter{adapters.MongoDB.C("users")}
 
 	var userDataFromToken map[string]interface{}
@@ -447,18 +446,24 @@ func getRolesOfUser(requestWrapper messages.RequestWrapper) (roles []string, err
 		m.Res = "/users/" + userId
 		rw.Message = m
 
-		var user map[string]interface{}
 		user, err = adapters.HandleGetById(dbAdapter, rw)
 		if err != nil {
 			return
 		}
+	}
 
-		if user["_roles"] != nil {
-			for _, r := range user["_roles"].([]interface{}) {
-				roles = append(roles, "role:" + r.(string))
-			}
+	return
+}
+
+func getRolesOfUser(user map[string]interface{}) (roles []string, err *utils.Error) {
+
+	// TODO: get roles recursively
+
+	if user != nil && user["_roles"] != nil {
+		for _, r := range user["_roles"].([]interface{}) {
+			roles = append(roles, "role:" + r.(string))
 		}
-		roles = append(roles, "user:" + userId)
+		roles = append(roles, "user:" + user["_id"].(string))
 	}
 	roles = append(roles, "*")
 

@@ -6,24 +6,29 @@ type Config struct {
 	 * address:		IP of the MongoDB server (required)
 	 * name:		Name of the database on the server (required)
 	 */
-	Mongo        map[string]string `json:"mongo,omitempty"`
+	Mongo         map[string]string `json:"mongo,omitempty"`
 
 	/* Facebook configuration. Used for registration with Facebook account. Fields:
 	 * appId:		Facebook app id	(required)
 	 * appToken:	Facebook app token (required)
 	 */
-	Facebook     map[string]string `json:"facebook,omitempty"`
+	Facebook      map[string]string `json:"facebook,omitempty"`
 
 	/* Google configuration. Used for registration with Google account. Fields:
 	 * clientId:	Google app id (required)
 	 */
-	Google     map[string]string `json:"google,omitempty"`
+	Google        map[string]string `json:"google,omitempty"`
 
 	/* Reset password configuration. Used for sending email to users when they reset their passwords.
 	 *
 	 *
 	 */
-	ResetPassword     map[string]string `json:"resetPassword,omitempty"`
+	ResetPassword map[string]string `json:"resetPassword,omitempty"`
+
+	/*
+	 * Web hook configuration. Used for handling before-after the http methods.
+	 */
+	WebHook       map[string]interface{} `json:"hook,omitempty"`
 
 }
 

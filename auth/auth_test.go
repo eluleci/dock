@@ -74,7 +74,7 @@ func TestHandleSignUp(t *testing.T) {
 		var requestWrapper messages.RequestWrapper
 		requestWrapper.Message = message
 
-		_, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
+		_, _, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
 
 		So(err.Code, ShouldEqual, http.StatusBadRequest)
 		So(called, ShouldBeFalse)
@@ -95,7 +95,7 @@ func TestHandleSignUp(t *testing.T) {
 		var requestWrapper messages.RequestWrapper
 		requestWrapper.Message = message
 
-		_, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
+		_, _, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
 
 		So(err.Code, ShouldEqual, http.StatusBadRequest)
 		So(called, ShouldBeFalse)
@@ -123,7 +123,7 @@ func TestHandleSignUp(t *testing.T) {
 		var requestWrapper messages.RequestWrapper
 		requestWrapper.Message = message
 
-		_, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
+		_, _, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
 
 		So(err.Code, ShouldEqual, http.StatusConflict)
 		So(called, ShouldBeFalse)
@@ -140,7 +140,7 @@ func TestHandleSignUp(t *testing.T) {
 			return
 		}
 
-		adapters.HandlePost = func (m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
+		adapters.HandlePost = func(m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
 			response = make(map[string]interface{})
 			response["_id"] = "564f1a28e63bce219e1cc745"
 			return
@@ -154,7 +154,7 @@ func TestHandleSignUp(t *testing.T) {
 		var requestWrapper messages.RequestWrapper
 		requestWrapper.Message = message
 
-		response, _ := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
+		response, _, _ := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
 
 		So(response.Status, ShouldEqual, http.StatusInternalServerError)
 	})
@@ -167,7 +167,7 @@ func TestHandleSignUp(t *testing.T) {
 			return
 		}
 
-		adapters.HandlePost = func (m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
+		adapters.HandlePost = func(m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
 			response = make(map[string]interface{})
 			response["_id"] = "564f1a28e63bce219e1cc745"
 			return
@@ -194,7 +194,7 @@ func TestHandleSignUp(t *testing.T) {
 			return
 		}
 
-		adapters.HandlePost = func (m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
+		adapters.HandlePost = func(m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
 			response = make(map[string]interface{})
 			response["_id"] = "564f1a28e63bce219e1cc745"
 			return
@@ -224,7 +224,7 @@ func TestHandleSignUp(t *testing.T) {
 			return
 		}
 
-		adapters.HandlePost = func (m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
+		adapters.HandlePost = func(m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
 			response = make(map[string]interface{})
 			response["_id"] = "564f1a28e63bce219e1cc745"
 			return
@@ -238,7 +238,7 @@ func TestHandleSignUp(t *testing.T) {
 		var requestWrapper messages.RequestWrapper
 		requestWrapper.Message = message
 
-		response, _ := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
+		response, _, _ := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
 
 		So(response.Status, ShouldEqual, http.StatusCreated)
 	})
@@ -267,7 +267,7 @@ func TestFacebookRegistration(t *testing.T) {
 		var requestWrapper messages.RequestWrapper
 		requestWrapper.Message = message
 
-		_, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
+		_, _, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
 
 		So(err.Code, ShouldEqual, http.StatusBadRequest)
 	})
@@ -284,7 +284,7 @@ func TestFacebookRegistration(t *testing.T) {
 		var requestWrapper messages.RequestWrapper
 		requestWrapper.Message = message
 
-		_, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
+		_, _, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
 
 		So(err.Code, ShouldEqual, http.StatusBadRequest)
 	})
@@ -296,7 +296,7 @@ func TestFacebookRegistration(t *testing.T) {
 		config.SystemConfig.Facebook = nil
 
 		requestWrapper := makeValidFacebookRequest()
-		_, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
+		_, _, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
 
 		So(err.Code, ShouldEqual, http.StatusInternalServerError)
 
@@ -313,7 +313,7 @@ func TestFacebookRegistration(t *testing.T) {
 		setDefaultServer(mockServer)
 
 		requestWrapper := makeValidFacebookRequest()
-		_, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
+		_, _, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
 
 		So(err.Code, ShouldEqual, http.StatusInternalServerError)
 	})
@@ -328,7 +328,7 @@ func TestFacebookRegistration(t *testing.T) {
 		setDefaultServer(mockServer)
 
 		requestWrapper := makeValidFacebookRequest()
-		_, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
+		_, _, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
 
 		So(err.Code, ShouldEqual, http.StatusInternalServerError)
 	})
@@ -345,7 +345,7 @@ func TestFacebookRegistration(t *testing.T) {
 		defer mockServer.Close()
 		setDefaultServer(mockServer)
 
-		_, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
+		_, _, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
 
 		So(err.Code, ShouldEqual, http.StatusInternalServerError)
 
@@ -357,7 +357,7 @@ func TestFacebookRegistration(t *testing.T) {
 		defer mockServer2.Close()
 		setDefaultServer(mockServer2)
 
-		_, err2 := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
+		_, _, err2 := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
 
 		So(err2.Code, ShouldEqual, http.StatusInternalServerError)
 	})
@@ -374,7 +374,7 @@ func TestFacebookRegistration(t *testing.T) {
 
 		requestWrapper := makeValidFacebookRequest()
 
-		_, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
+		_, _, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
 
 		So(err.Code, ShouldEqual, http.StatusInternalServerError)
 	})
@@ -391,7 +391,7 @@ func TestFacebookRegistration(t *testing.T) {
 
 		requestWrapper := makeValidFacebookRequest()
 
-		_, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
+		_, _, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
 
 		So(err.Code, ShouldEqual, http.StatusBadRequest)
 	})
@@ -408,7 +408,7 @@ func TestFacebookRegistration(t *testing.T) {
 
 		requestWrapper := makeValidFacebookRequest()
 
-		_, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
+		_, _, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
 
 		So(err.Code, ShouldEqual, http.StatusBadRequest)
 	})
@@ -431,7 +431,7 @@ func TestFacebookRegistration(t *testing.T) {
 		}
 
 		requestWrapper := makeValidFacebookRequest()
-		response, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
+		response, _, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
 
 		So(err, ShouldBeNil)
 		So(called, ShouldBeTrue)
@@ -458,7 +458,7 @@ func TestFacebookRegistration(t *testing.T) {
 		}
 
 		requestWrapper := makeValidFacebookRequest()
-		response, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
+		response, _, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
 
 		So(err, ShouldBeNil)
 		So(called, ShouldBeTrue)
@@ -489,7 +489,7 @@ func TestGoogleRegistration(t *testing.T) {
 		var requestWrapper messages.RequestWrapper
 		requestWrapper.Message = message
 
-		_, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
+		_, _, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
 
 		So(err.Code, ShouldEqual, http.StatusBadRequest)
 	})
@@ -506,7 +506,7 @@ func TestGoogleRegistration(t *testing.T) {
 		var requestWrapper messages.RequestWrapper
 		requestWrapper.Message = message
 
-		_, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
+		_, _, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
 
 		So(err.Code, ShouldEqual, http.StatusBadRequest)
 	})
@@ -519,7 +519,7 @@ func TestGoogleRegistration(t *testing.T) {
 
 		requestWrapper := makeValidGoogleRequest()
 
-		_, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
+		_, _, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
 
 		So(err.Code, ShouldEqual, http.StatusInternalServerError)
 
@@ -537,7 +537,7 @@ func TestGoogleRegistration(t *testing.T) {
 
 		requestWrapper := makeValidGoogleRequest()
 
-		_, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
+		_, _, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
 
 		So(err.Code, ShouldEqual, http.StatusInternalServerError)
 	})
@@ -552,7 +552,7 @@ func TestGoogleRegistration(t *testing.T) {
 		setDefaultServer(mockServer)
 
 		requestWrapper := makeValidGoogleRequest()
-		_, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
+		_, _, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
 
 		So(err.Code, ShouldEqual, http.StatusInternalServerError)
 	})
@@ -569,7 +569,7 @@ func TestGoogleRegistration(t *testing.T) {
 
 		requestWrapper := makeValidGoogleRequest()
 
-		_, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
+		_, _, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
 
 		So(err.Code, ShouldEqual, http.StatusInternalServerError)
 	})
@@ -586,7 +586,7 @@ func TestGoogleRegistration(t *testing.T) {
 
 		requestWrapper := makeValidGoogleRequest()
 
-		_, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
+		_, _, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
 
 		So(err.Code, ShouldEqual, http.StatusInternalServerError)
 	})
@@ -609,7 +609,7 @@ func TestGoogleRegistration(t *testing.T) {
 		}
 
 		requestWrapper := makeValidGoogleRequest()
-		response, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
+		response, _, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
 
 		So(err, ShouldBeNil)
 		So(called, ShouldBeTrue)
@@ -636,7 +636,7 @@ func TestGoogleRegistration(t *testing.T) {
 		}
 
 		requestWrapper := makeValidGoogleRequest()
-		response, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
+		response, _, err := HandleSignUp(requestWrapper, &adapters.MongoAdapter{})
 
 		So(err, ShouldBeNil)
 		So(called, ShouldBeTrue)

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"net/http"
 	"github.com/eluleci/dock/modifier"
+	"github.com/eluleci/dock/hook"
 )
 
 const (
@@ -127,12 +128,14 @@ func (a *Actor) Run() {
 
 var handleRequest = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message) {
 
-	var err *utils.Error
 	var isGranted bool
+	var user map[string]interface{}
+//	var hookBody map[string]interface{}
+	var err *utils.Error
 
 	// TODO check for not allowed commands on resources. for ex: DELETE /topics, POST /users/123
 
-	isGranted, err = auth.IsGranted(requestWrapper, a.adapter)
+	isGranted, user, err = auth.IsGranted(requestWrapper, a.adapter)
 
 	if err != nil {
 		// skip below. status code is set at the end of the function
@@ -141,7 +144,7 @@ var handleRequest = func(a *Actor, requestWrapper messages.RequestWrapper) (resp
 	} else if strings.EqualFold(requestWrapper.Message.Command, "get") {
 		response, err = handleGet(a, requestWrapper)
 	} else if strings.EqualFold(requestWrapper.Message.Command, "post") {
-		response, err = handlePost(a, requestWrapper)
+		response, requestWrapper.Message.Body, err = handlePost(a, requestWrapper)
 	} else if strings.EqualFold(requestWrapper.Message.Command, "put") {
 		response, err = handlePut(a, requestWrapper)
 	} else if strings.EqualFold(requestWrapper.Message.Command, "delete") {
@@ -153,6 +156,8 @@ var handleRequest = func(a *Actor, requestWrapper messages.RequestWrapper) (resp
 		response.Body = make(map[string]interface{})
 		response.Body["message"] = err.Message
 	}
+
+	go hook.SendHookRequest(a.class, "after", requestWrapper.Message.Command, user, requestWrapper.Message)
 	return
 }
 
@@ -164,9 +169,9 @@ var handleGet = func(a *Actor, requestWrapper messages.RequestWrapper) (response
 
 	if isObjectTypeActor {
 		id := requestWrapper.Message.Res[strings.LastIndex(requestWrapper.Message.Res, "/") + 1:]
-		if isFileClass { 	// get file by id
+		if isFileClass {    // get file by id
 			response.RawBody, err = adapters.GetFile(id)
-		} else {			// get object by id
+		} else {            // get object by id
 			response.Body, err = adapters.HandleGetById(a.adapter, requestWrapper)
 		}
 	} else if isCollectionTypeActor {                    // query objects
@@ -193,10 +198,10 @@ var handleGet = func(a *Actor, requestWrapper messages.RequestWrapper) (response
 	return
 }
 
-var handlePost = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err *utils.Error) {
+var handlePost = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, hookBody map[string]interface{}, err *utils.Error) {
 
 	if strings.EqualFold(a.res, ResourceRegister) {                                // sign up request
-		response, err = auth.HandleSignUp(requestWrapper, a.adapter)
+		response, hookBody, err = auth.HandleSignUp(requestWrapper, a.adapter)
 	} else if strings.EqualFold(a.res, ResourceLogin) {                            // login request
 		response, err = auth.HandleLogin(requestWrapper, a.adapter)
 	} else if strings.EqualFold(a.res, ResourceResetPassword) {                    // reset password
@@ -204,7 +209,7 @@ var handlePost = func(a *Actor, requestWrapper messages.RequestWrapper) (respons
 	} else if strings.EqualFold(a.res, ResourceTypeUsers) {                        // post on users not allowed
 		response.Status = http.StatusMethodNotAllowed
 	} else if strings.EqualFold(a.actorType, ActorTypeCollection) {                // create object request
-		response.Body, err = adapters.HandlePost(a.adapter, requestWrapper)
+		response.Body, hookBody, err = adapters.HandlePost(a.adapter, requestWrapper)
 		if err == nil {response.Status = http.StatusCreated}
 	} else if strings.EqualFold(a.actorType, ActorTypeObject) {                    // post on objects are not allowed
 		response.Status = http.StatusBadRequest

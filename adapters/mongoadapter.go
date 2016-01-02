@@ -49,7 +49,7 @@ var Connect = func(config config.Config) (err *utils.Error) {
 
 }
 
-var HandlePost = func(m *MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
+var HandlePost = func(m *MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
 
 	if strings.EqualFold("/files", requestWrapper.Res) {
 
@@ -87,6 +87,7 @@ var HandlePost = func(m *MongoAdapter, requestWrapper messages.RequestWrapper) (
 			response = make(map[string]interface{})
 			response["_id"] = fileName
 			response["createdAt"] = int32(now.Unix())
+			hookBody = response
 			return
 		} else {
 
@@ -127,6 +128,7 @@ var HandlePost = func(m *MongoAdapter, requestWrapper messages.RequestWrapper) (
 					response = make(map[string]interface{})
 					response["_id"] = fileName
 					response["createdAt"] = int32(now.Unix())
+					hookBody = response
 					return
 				}
 			}
@@ -153,6 +155,7 @@ var HandlePost = func(m *MongoAdapter, requestWrapper messages.RequestWrapper) (
 		response = make(map[string]interface{})
 		response["_id"] = objectId.Hex()
 		response["createdAt"] = createdAt
+		hookBody = message.Body
 	}
 
 	return

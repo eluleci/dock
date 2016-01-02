@@ -21,7 +21,7 @@ var _handleGet = func(a *Actor, requestWrapper messages.RequestWrapper) (respons
 	return
 }
 
-var _handlePost = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err *utils.Error) {
+var _handlePost = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, hookBody map[string]interface{}, err *utils.Error) {
 	return
 }
 
@@ -163,12 +163,12 @@ func TestCreateActor(t *testing.T) {
 
 func TestHandleRequest(t *testing.T) {
 
-	isGrantedFuncThatReturnsTrue := func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (isGranted bool, err *utils.Error) {
+	isGrantedFuncThatReturnsTrue := func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (isGranted bool, user map[string]interface{}, err *utils.Error) {
 		isGranted = true
 		return
 	}
 
-	isGrantedFuncThatReturnsFalse := func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (isGranted bool, err *utils.Error) {
+	isGrantedFuncThatReturnsFalse := func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (isGranted bool, user map[string]interface{}, err *utils.Error) {
 		isGranted = false
 		return
 	}
@@ -177,7 +177,7 @@ func TestHandleRequest(t *testing.T) {
 	Convey("Should call auth.GetPermissions", t, func() {
 
 		var called bool
-		auth.IsGranted = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (isGranted bool, err *utils.Error) {
+		auth.IsGranted = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (isGranted bool, user map[string]interface{}, err *utils.Error) {
 			called = true
 			return
 		}
@@ -188,7 +188,7 @@ func TestHandleRequest(t *testing.T) {
 
 	Convey("Should return permission error", t, func() {
 
-		auth.IsGranted = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (isGranted bool, err *utils.Error) {
+		auth.IsGranted = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (isGranted bool, user map[string]interface{}, err *utils.Error) {
 			err = &utils.Error{http.StatusInternalServerError, ""}
 			return
 		}
@@ -245,7 +245,7 @@ func TestHandleRequest(t *testing.T) {
 		auth.IsGranted = isGrantedFuncThatReturnsTrue
 
 		var called bool
-		handlePost = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err *utils.Error) {
+		handlePost = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, hookBody map[string]interface{}, err *utils.Error) {
 			called = true
 			return
 		}
@@ -379,7 +379,7 @@ func TestHandleGet(t *testing.T) {
 
 		var actor Actor
 		actor.res = ResourceLogin
-		_, err := handlePost(&actor, messages.RequestWrapper{})
+		_, _, err := handlePost(&actor, messages.RequestWrapper{})
 		So(err, ShouldBeNil)
 		So(called, ShouldBeTrue)
 
@@ -428,7 +428,7 @@ func TestHandlePost(t *testing.T) {
 
 		var actor Actor
 		actor.res = ResourceTypeUsers
-		response, _ := handlePost(&actor, messages.RequestWrapper{})
+		response, _, _ := handlePost(&actor, messages.RequestWrapper{})
 		So(response.Status, ShouldEqual, http.StatusMethodNotAllowed)
 
 	})
@@ -439,12 +439,12 @@ func TestHandlePost(t *testing.T) {
 		actor.res = ResourceRegister
 
 		var called bool
-		auth.HandleSignUp = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (response messages.Message, err *utils.Error) {
+		auth.HandleSignUp = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (response messages.Message, hookBody map[string]interface{}, err *utils.Error) {
 			called = true
 			return
 		}
 
-		_, err := handlePost(&actor, messages.RequestWrapper{})
+		_, _, err := handlePost(&actor, messages.RequestWrapper{})
 		So(err, ShouldBeNil)
 		So(called, ShouldBeTrue)
 
@@ -456,12 +456,12 @@ func TestHandlePost(t *testing.T) {
 		actor.actorType = ActorTypeCollection
 
 		var called bool
-		adapters.HandlePost = func(m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
+		adapters.HandlePost = func(m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
 			called = true
 			return
 		}
 
-		response, err := handlePost(&actor, messages.RequestWrapper{})
+		response, _, err := handlePost(&actor, messages.RequestWrapper{})
 		So(err, ShouldBeNil)
 		So(called, ShouldBeTrue)
 		So(response.Status, ShouldEqual, http.StatusCreated)
@@ -472,7 +472,7 @@ func TestHandlePost(t *testing.T) {
 		var actor Actor
 		actor.actorType = ActorTypeObject
 
-		response, err := handlePost(&actor, messages.RequestWrapper{})
+		response, _, err := handlePost(&actor, messages.RequestWrapper{})
 		So(err, ShouldBeNil)
 		So(response.Status, ShouldEqual, http.StatusBadRequest)
 	})
