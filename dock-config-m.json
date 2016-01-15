@@ -1,0 +1,16 @@
+{
+  "mongo": {
+    "address": "localhost:27017",
+    "name": "mentornity-db"
+  },
+  "hook": {
+    "endpoint": "http://localhost:2502",
+    "methods": {
+      "invitations": {
+        "after": {
+          "post": "/afterInvitationCreated"
+        }
+      }
+    }
+  }
+}

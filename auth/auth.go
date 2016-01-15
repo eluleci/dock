@@ -21,6 +21,7 @@ const (
 	ResourceRegister = "/register"
 	ResourceLogin = "/login"
 	ResourceTypeUsers = "/users"
+	ResourceFunctions = "/functions"
 )
 
 // used for password generation
@@ -395,16 +396,16 @@ var IsGranted = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters
 
 	var permissions map[string]bool
 
-	res := requestWrapper.Res
-	if strings.EqualFold(res, ResourceLogin) || strings.EqualFold(res, ResourceRegister) {
-		isGranted = true
-		return
-	}
-
 	var roles []string
 	user, err = getUser(requestWrapper)
 	roles, err = getRolesOfUser(user)
 	if err != nil {
+		return
+	}
+
+	res := requestWrapper.Res
+	if strings.EqualFold(res, ResourceLogin) || strings.EqualFold(res, ResourceRegister) || strings.HasPrefix(res, ResourceFunctions) {
+		isGranted = true
 		return
 	}
 

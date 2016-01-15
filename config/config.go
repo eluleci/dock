@@ -30,6 +30,11 @@ type Config struct {
 	 */
 	WebHook       map[string]interface{} `json:"hook,omitempty"`
 
+	/*
+	 * Custom functions configuration.
+	 */
+	Functions       map[string]interface{} `json:"functions,omitempty"`
+
 }
 
 var SystemConfig Config

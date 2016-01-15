@@ -10,17 +10,20 @@ import (
 	"net/http"
 	"github.com/eluleci/dock/modifier"
 	"github.com/eluleci/dock/hook"
+	"github.com/eluleci/dock/functions"
 )
 
 const (
 	ActorTypeRoot = "root"
 	ActorTypeCollection = "resource"
 	ActorTypeObject = "object"
+	ActorTypeFunctions = "functions"
 	ClassUsers = "users"
 	ClassFiles = "files"
 	ResourceTypeUsers = "/users"
 	ResourceTypeFiles = "/files"
 	ResourceRegister = "/register"
+	ResourceTypeDevices = "/devices"
 	ResourceLogin = "/login"
 	ResourceResetPassword = "/resetpassword"
 )
@@ -48,7 +51,9 @@ var CreateActor = func(res string, level int, parentInbox chan messages.RequestW
 		className = retrieveClassName(res, level)
 	}
 
-	if level == 0 {
+	if strings.HasPrefix(res, "/functions") {
+		a.actorType = ActorTypeFunctions
+	} else if level == 0 {
 		a.actorType = ActorTypeRoot
 	} else if level == 1 {
 		a.actorType = ActorTypeCollection
@@ -130,7 +135,7 @@ var handleRequest = func(a *Actor, requestWrapper messages.RequestWrapper) (resp
 
 	var isGranted bool
 	var user map[string]interface{}
-//	var hookBody map[string]interface{}
+	//	var hookBody map[string]interface{}
 	var err *utils.Error
 
 	// TODO check for not allowed commands on resources. for ex: DELETE /topics, POST /users/123
@@ -141,6 +146,15 @@ var handleRequest = func(a *Actor, requestWrapper messages.RequestWrapper) (resp
 		// skip below. status code is set at the end of the function
 	} else if !isGranted {
 		err = &utils.Error{http.StatusUnauthorized, "Unauthorized."}
+	} else if(strings.EqualFold(a.actorType, ActorTypeFunctions)) {
+		status, rBody, fErr := functions.ExecuteCustomFunction(a.res, user, requestWrapper.Message)
+		if fErr != nil {
+			err = fErr
+			return
+		}
+		response.Status = status
+		response.Body = rBody
+
 	} else if strings.EqualFold(requestWrapper.Message.Command, "get") {
 		response, err = handleGet(a, requestWrapper)
 	} else if strings.EqualFold(requestWrapper.Message.Command, "post") {
@@ -206,6 +220,9 @@ var handlePost = func(a *Actor, requestWrapper messages.RequestWrapper) (respons
 		response, err = auth.HandleLogin(requestWrapper, a.adapter)
 	} else if strings.EqualFold(a.res, ResourceResetPassword) {                    // reset password
 		response, err = auth.HandleResetPassword(requestWrapper, a.adapter)
+	} else if strings.EqualFold(a.res, ResourceTypeDevices) {                      // login request
+
+		response, err = auth.HandleLogin(requestWrapper, a.adapter)
 	} else if strings.EqualFold(a.res, ResourceTypeUsers) {                        // post on users not allowed
 		response.Status = http.StatusMethodNotAllowed
 	} else if strings.EqualFold(a.actorType, ActorTypeCollection) {                // create object request
