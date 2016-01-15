@@ -150,7 +150,7 @@ var handleRequest = func(a *Actor, requestWrapper messages.RequestWrapper) (resp
 		status, rBody, fErr := functions.ExecuteCustomFunction(a.res, user, requestWrapper.Message)
 		if fErr != nil {
 			err = fErr
-			return
+			utils.Log("error", err.Message)
 		}
 		response.Status = status
 		response.Body = rBody

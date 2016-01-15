@@ -30,7 +30,7 @@ var sendRequest = func(url string, body interface{}) (status int, responseBody m
 
 	req, createRequestErr := http.NewRequest("POST", url, bytes.NewBuffer(bodyAsBytes))
 	if createRequestErr != nil {
-		err = &utils.Error{http.StatusInternalServerError, "Creating request to function server failed."}
+		err = &utils.Error{http.StatusInternalServerError, "Creating request to hook server failed."}
 		return
 	}
 
@@ -38,7 +38,7 @@ var sendRequest = func(url string, body interface{}) (status int, responseBody m
 	client := &http.Client{}
 	resp, requestErr := client.Do(req)
 	if requestErr != nil {
-		err = &utils.Error{http.StatusInternalServerError, "Sending request to function server failed."}
+		err = &utils.Error{http.StatusInternalServerError, "Sending request to hook server failed."}
 		return
 	}
 	defer resp.Body.Close()
@@ -47,7 +47,7 @@ var sendRequest = func(url string, body interface{}) (status int, responseBody m
 	decoder := json.NewDecoder(resp.Body)
 	decodeErr := decoder.Decode(&responseBody)
 	if decodeErr != nil {
-		err = &utils.Error{http.StatusInternalServerError, "Decoding body failed."}
+		err = &utils.Error{http.StatusInternalServerError, "Decoding body from hook server failed."}
 	}
 	return
 }
