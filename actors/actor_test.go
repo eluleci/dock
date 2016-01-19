@@ -11,6 +11,8 @@ import (
 	"os"
 	"strings"
 	"gopkg.in/mgo.v2"
+	"github.com/eluleci/dock/hooks"
+	"mime/multipart"
 )
 
 var _handleRequest = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message) {
@@ -33,7 +35,7 @@ var _handleDelete = func(a *Actor, requestWrapper messages.RequestWrapper) (resp
 	return
 }
 
-var _CreateActor = func (res string, level int, parentInbox chan messages.RequestWrapper) (a Actor) {
+var _CreateActor = func(res string, level int, parentInbox chan messages.RequestWrapper) (a Actor) {
 	return
 }
 
@@ -49,6 +51,7 @@ func saveRealFunctions() {
 	_handlePost = handlePost
 	_handlePut = handlePut
 	_handleDelete = handleDelete
+
 }
 
 func resetFunctions() {
@@ -75,6 +78,7 @@ func TestInbox(t *testing.T) {
 		requestWrapper.Listener = responseChannel
 
 		var actor Actor
+		actor.class = "someclass"
 		actor.res = "/"
 		actor.Inbox = make(chan messages.RequestWrapper)
 		go actor.Run()
@@ -163,6 +167,12 @@ func TestCreateActor(t *testing.T) {
 
 func TestHandleRequest(t *testing.T) {
 
+	hooks.ExecuteTrigger = func(className, when, method string,
+	parameters map[string][]string, body map[string]interface{}, multipart *multipart.Form,
+	user interface{}) (responseBody map[string]interface{}, err *utils.Error) {
+		return
+	}
+
 	isGrantedFuncThatReturnsTrue := func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (isGranted bool, user map[string]interface{}, err *utils.Error) {
 		isGranted = true
 		return
@@ -182,7 +192,9 @@ func TestHandleRequest(t *testing.T) {
 			return
 		}
 
-		handleRequest(&Actor{}, messages.RequestWrapper{})
+		actor := &Actor{}
+		actor.class = "someclass"
+		handleRequest(actor, messages.RequestWrapper{})
 		So(called, ShouldBeTrue)
 	})
 
@@ -193,7 +205,9 @@ func TestHandleRequest(t *testing.T) {
 			return
 		}
 
-		response := handleRequest(&Actor{}, messages.RequestWrapper{})
+		actor := &Actor{}
+		actor.class = "someclass"
+		response := handleRequest(actor, messages.RequestWrapper{})
 		So(response.Status, ShouldEqual, http.StatusInternalServerError)
 	})
 
@@ -217,9 +231,10 @@ func TestHandleRequest(t *testing.T) {
 		var rw messages.RequestWrapper
 		rw.Message = m
 
-		handleRequest(&Actor{}, rw)
+		actor := &Actor{}
+		actor.class = "someclass"
+		handleRequest(actor, rw)
 		So(called, ShouldBeTrue)
-
 	})
 
 	Convey("Should return Authorization error for GET", t, func() {
@@ -232,7 +247,9 @@ func TestHandleRequest(t *testing.T) {
 		var rw messages.RequestWrapper
 		rw.Message = m
 
-		response := handleRequest(&Actor{}, rw)
+		actor := &Actor{}
+		actor.class = "someclass"
+		response := handleRequest(actor, rw)
 		So(response.Status, ShouldEqual, http.StatusUnauthorized)
 
 	})
@@ -256,7 +273,9 @@ func TestHandleRequest(t *testing.T) {
 		var rw messages.RequestWrapper
 		rw.Message = m
 
-		handleRequest(&Actor{}, rw)
+		actor := &Actor{}
+		actor.class = "someclass"
+		handleRequest(actor, rw)
 		So(called, ShouldBeTrue)
 	})
 
@@ -270,7 +289,9 @@ func TestHandleRequest(t *testing.T) {
 		var rw messages.RequestWrapper
 		rw.Message = m
 
-		response := handleRequest(&Actor{}, rw)
+		actor := &Actor{}
+		actor.class = "someclass"
+		response := handleRequest(actor, rw)
 		So(response.Status, ShouldEqual, http.StatusUnauthorized)
 
 	})
@@ -293,7 +314,9 @@ func TestHandleRequest(t *testing.T) {
 		var rw messages.RequestWrapper
 		rw.Message = m
 
-		handleRequest(&Actor{}, rw)
+		actor := &Actor{}
+		actor.class = "someclass"
+		handleRequest(actor, rw)
 		So(called, ShouldBeTrue)
 	})
 
@@ -307,7 +330,9 @@ func TestHandleRequest(t *testing.T) {
 		var rw messages.RequestWrapper
 		rw.Message = m
 
-		response := handleRequest(&Actor{}, rw)
+		actor := &Actor{}
+		actor.class = "someclass"
+		response := handleRequest(actor, rw)
 		So(response.Status, ShouldEqual, http.StatusUnauthorized)
 	})
 
@@ -329,7 +354,9 @@ func TestHandleRequest(t *testing.T) {
 		var rw messages.RequestWrapper
 		rw.Message = m
 
-		handleRequest(&Actor{}, rw)
+		actor := &Actor{}
+		actor.class = "someclass"
+		handleRequest(actor, rw)
 		So(called, ShouldBeTrue)
 	})
 
@@ -347,7 +374,9 @@ func TestHandleRequest(t *testing.T) {
 		var rw messages.RequestWrapper
 		rw.Message = m
 
-		response := handleRequest(&Actor{}, rw)
+		actor := &Actor{}
+		actor.class = "someclass"
+		response := handleRequest(actor, rw)
 		So(response.Status, ShouldEqual, http.StatusNotFound)
 	})
 
@@ -361,7 +390,9 @@ func TestHandleRequest(t *testing.T) {
 		var rw messages.RequestWrapper
 		rw.Message = m
 
-		response := handleRequest(&Actor{}, rw)
+		actor := &Actor{}
+		actor.class = "someclass"
+		response := handleRequest(actor, rw)
 		So(response.Status, ShouldEqual, http.StatusUnauthorized)
 	})
 }

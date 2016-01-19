@@ -9,7 +9,7 @@ import (
 	"strings"
 	"net/http"
 	"github.com/eluleci/dock/modifier"
-	"github.com/eluleci/dock/hook"
+	"github.com/eluleci/dock/hooks"
 	"github.com/eluleci/dock/functions"
 )
 
@@ -23,7 +23,6 @@ const (
 	ResourceTypeUsers = "/users"
 	ResourceTypeFiles = "/files"
 	ResourceRegister = "/register"
-	ResourceTypeDevices = "/devices"
 	ResourceLogin = "/login"
 	ResourceResetPassword = "/resetpassword"
 )
@@ -135,26 +134,26 @@ var handleRequest = func(a *Actor, requestWrapper messages.RequestWrapper) (resp
 
 	var isGranted bool
 	var user map[string]interface{}
-	//	var hookBody map[string]interface{}
 	var err *utils.Error
 
 	// TODO check for not allowed commands on resources. for ex: DELETE /topics, POST /users/123
 
 	isGranted, user, err = auth.IsGranted(requestWrapper, a.adapter)
 
+	if isGranted && err == nil {
+		response, err = ExecuteTrigger(a, user, requestWrapper, "before")
+		if response.Body != nil {
+			// replace request body with the one that hook server returns
+			requestWrapper.Message.Body = response.Body
+		}
+	}
+
 	if err != nil {
 		// skip below. status code is set at the end of the function
 	} else if !isGranted {
 		err = &utils.Error{http.StatusUnauthorized, "Unauthorized."}
-	} else if(strings.EqualFold(a.actorType, ActorTypeFunctions)) {
-		status, rBody, fErr := functions.ExecuteCustomFunction(a.res, user, requestWrapper.Message)
-		if fErr != nil {
-			err = fErr
-			utils.Log("error", err.Message)
-		}
-		response.Status = status
-		response.Body = rBody
-
+	} else if (strings.EqualFold(a.actorType, ActorTypeFunctions)) {
+		response, err = handleFunctionCall(a, user, requestWrapper)
 	} else if strings.EqualFold(requestWrapper.Message.Command, "get") {
 		response, err = handleGet(a, requestWrapper)
 	} else if strings.EqualFold(requestWrapper.Message.Command, "post") {
@@ -165,13 +164,42 @@ var handleRequest = func(a *Actor, requestWrapper messages.RequestWrapper) (resp
 		response, err = handleDelete(a, requestWrapper)
 	}
 
-	if err != nil && response.Status == 0 {
-		response.Status = err.Code
-		response.Body = make(map[string]interface{})
-		response.Body["message"] = err.Message
+	if err != nil {
+		if response.Status == 0 {response.Status = err.Code}
+		if response.Body == nil {response.Body = map[string]interface{}{"message":err.Message}}
 	}
 
-	go hook.SendHookRequest(a.class, "after", requestWrapper.Message.Command, user, requestWrapper.Message)
+	// TODO: call hooks.ExecuteTrigger in goroutine
+	//	hooks.ExecuteTrigger(a.class, "after", requestWrapper.Message.Command, user, requestWrapper.Message)
+	ExecuteTrigger(a, user, requestWrapper, "after")
+	return
+}
+
+var ExecuteTrigger = func(a *Actor, user interface{}, requestWrapper messages.RequestWrapper, when string) (response messages.Message, err *utils.Error) {
+
+	response.Body, err = hooks.ExecuteTrigger(a.class, when,
+		requestWrapper.Message.Command,
+		requestWrapper.Message.Parameters,
+		requestWrapper.Message.Body,
+		requestWrapper.Message.MultipartForm,
+		user)
+	if err != nil {
+		if response.Body == nil {
+			response.Body = map[string]interface{}{"message": err.Message}
+		}
+		return
+	}
+	return
+}
+
+var handleFunctionCall = func(a *Actor, user interface{}, requestWrapper messages.RequestWrapper) (response messages.Message, err *utils.Error) {
+	status, rBody, fErr := functions.ExecuteCustomFunction(a.res, user, requestWrapper.Message)
+	if fErr != nil {
+		err = fErr
+		utils.Log("error", err.Message)
+	}
+	response.Status = status
+	response.Body = rBody
 	return
 }
 
@@ -220,9 +248,6 @@ var handlePost = func(a *Actor, requestWrapper messages.RequestWrapper) (respons
 		response, err = auth.HandleLogin(requestWrapper, a.adapter)
 	} else if strings.EqualFold(a.res, ResourceResetPassword) {                    // reset password
 		response, err = auth.HandleResetPassword(requestWrapper, a.adapter)
-	} else if strings.EqualFold(a.res, ResourceTypeDevices) {                      // login request
-
-		response, err = auth.HandleLogin(requestWrapper, a.adapter)
 	} else if strings.EqualFold(a.res, ResourceTypeUsers) {                        // post on users not allowed
 		response.Status = http.StatusMethodNotAllowed
 	} else if strings.EqualFold(a.actorType, ActorTypeCollection) {                // create object request
