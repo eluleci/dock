@@ -398,6 +398,10 @@ var IsGranted = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters
 
 	var roles []string
 	user, err = getUser(requestWrapper)
+	if err != nil {
+		return
+	}
+
 	roles, err = getRolesOfUser(user)
 	if err != nil {
 		return
