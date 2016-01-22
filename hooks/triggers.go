@@ -11,13 +11,98 @@ import (
 	"mime/multipart"
 )
 
-var ExecuteTrigger = func(className, when, method string,
-parameters map[string][]string, body map[string]interface{}, multipart *multipart.Form,
-user interface{}) (responseBody map[string]interface{}, err *utils.Error) {
+var ExecuteFunction = func(res string, parameters map[string][]string, body map[string]interface{}, user interface{}) (responseBody map[string]interface{}, err *utils.Error) {
+
+	originalUrl := res[:strings.LastIndex(res, "-") - 1]
+	functionName := res[strings.LastIndex(res, "-") + 1:]
+
+	functionData, tErr := getFunctionData(functionName)
+	if tErr != nil {
+		err = tErr
+		return
+	}
+
+	data := map[string]interface{}{
+		"res": originalUrl,
+		"user": user,
+		"parameters": parameters,
+		"body": body,
+	}
+
+	var status int
+	status, responseBody, err = sendRequest(functionData["url"].(string), data)
+
+	if status >= 400 {
+		err = &utils.Error{status, ""}
+	}
+	return
+}
+
+var getFunctionData = func(name string) (function map[string]interface{}, err *utils.Error) {
+	whereParams := map[string]interface{}{
+		"name": map[string]string{
+			"$eq": name,
+		},
+	}
+
+	whereParamsJson, jsonErr := json.Marshal(whereParams)
+	if jsonErr != nil {
+		err = &utils.Error{http.StatusInternalServerError, "Creating 'get function info' request failed."}
+		return
+	}
+	requestWrapper := messages.RequestWrapper{}
+	requestWrapper.Message.Parameters = make(map[string][]string)
+	requestWrapper.Message.Parameters["where"] = []string{string(whereParamsJson)}
 
 	// TODO: optimise adapter not to require redundant instance creation
-	adapter := &adapters.MongoAdapter{adapters.MongoDB.C("triggers")}
+	adapter := &adapters.MongoAdapter{adapters.MongoDB.C("functions")}
+	results, fetchErr := adapters.HandleGet(adapter, requestWrapper)
 
+	if fetchErr != nil {
+		err = fetchErr
+		return
+	}
+	if results["data"] != nil {
+		resultsAsMap := results["data"].([]map[string]interface{})
+
+		if len(resultsAsMap) == 0 {
+			err = &utils.Error{http.StatusNotFound, "Function with name '" + name + "' not found."}
+			return
+		}
+		function = resultsAsMap[0]
+	}
+	return
+}
+
+var ExecuteTrigger = func(className, when, method string, parameters map[string][]string, body map[string]interface{}, multipart *multipart.Form, user interface{}) (responseBody map[string]interface{}, err *utils.Error) {
+
+	triggerData, tErr := getTriggerData(className, when, method)
+	if tErr != nil {
+		if tErr.Code == http.StatusNotFound {
+			return
+		} else {
+			err = tErr
+		}
+		return
+	}
+
+	data := map[string]interface{}{
+		"user": user,
+		"parameters": parameters,
+		"body": body,
+		"multipart": multipart,
+	}
+
+	var status int
+	status, responseBody, err = sendRequest(triggerData["url"].(string), data)
+
+	if status >= 400 {
+		err = &utils.Error{status, ""}
+	}
+	return
+}
+
+var getTriggerData = func(className, when, method string) (trigger map[string]interface{}, err *utils.Error) {
 	whereParams := map[string]interface{}{
 		"where": map[string]string{
 			"$eq": className,
@@ -32,32 +117,29 @@ user interface{}) (responseBody map[string]interface{}, err *utils.Error) {
 
 	whereParamsJson, jsonErr := json.Marshal(whereParams)
 	if jsonErr != nil {
-		err = &utils.Error{http.StatusInternalServerError, "Creating user request failed."}
+		err = &utils.Error{http.StatusInternalServerError, "Creating 'get trigger info' request failed."}
 		return
 	}
 	requestWrapper := messages.RequestWrapper{}
 	requestWrapper.Message.Parameters = make(map[string][]string)
 	requestWrapper.Message.Parameters["where"] = []string{string(whereParamsJson)}
 
+	// TODO: optimise adapter not to require redundant instance creation
+	adapter := &adapters.MongoAdapter{adapters.MongoDB.C("triggers")}
 	results, fetchErr := adapters.HandleGet(adapter, requestWrapper)
-	resultsAsMap := results["data"].([]map[string]interface{})
-	if fetchErr != nil || len(resultsAsMap) == 0 {
+
+	if fetchErr != nil {
+		err = fetchErr
 		return
 	}
-	triggerData := resultsAsMap[0]
+	if results["data"] != nil {
+		resultsAsMap := results["data"].([]map[string]interface{})
 
-	data := map[string]interface{}{
-		"user": user,
-		"parameters": parameters,
-		"body": body,
-		"multipart": multipart,
-	}
-
-	var status int
-	status, responseBody, err = sendRequest(triggerData["url"].(string), data)
-
-	if status >= 400 {
-		err = &utils.Error{status,""}
+		if len(resultsAsMap) == 0 {
+			err = &utils.Error{http.StatusNotFound, "Trigger not found."}
+			return
+		}
+		trigger = resultsAsMap[0]
 	}
 	return
 }

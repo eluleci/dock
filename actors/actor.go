@@ -10,13 +10,13 @@ import (
 	"net/http"
 	"github.com/eluleci/dock/modifier"
 	"github.com/eluleci/dock/hooks"
-	"github.com/eluleci/dock/functions"
 )
 
 const (
 	ActorTypeRoot = "root"
-	ActorTypeCollection = "resource"
-	ActorTypeObject = "object"
+	ActorTypeCollection = "collection"
+	ActorTypeModel = "model"
+	ActorTypeAttribute = "attribute"
 	ActorTypeFunctions = "functions"
 	ClassUsers = "users"
 	ClassFiles = "files"
@@ -43,24 +43,30 @@ var RootActor Actor
 
 var CreateActor = func(res string, level int, parentInbox chan messages.RequestWrapper) (a Actor) {
 
+	var isFunctionActor bool
 	var className string
 	if strings.EqualFold(res, ResourceLogin) || strings.EqualFold(res, ResourceRegister) || strings.EqualFold(res, ResourceResetPassword) {
 		className = ClassUsers
 	} else {
-		className = retrieveClassName(res, level)
+		resParts := strings.Split(res, "/")
+		resourceLevel := resParts[level]
+		isFunctionActor = strings.HasPrefix(resourceLevel, "-")
+		if len(resParts) > 1 {
+			className = resParts[1]
+		}
 	}
 
-	if strings.HasPrefix(res, "/functions") {
+	if isFunctionActor {
 		a.actorType = ActorTypeFunctions
 	} else if level == 0 {
 		a.actorType = ActorTypeRoot
 	} else if level == 1 {
 		a.actorType = ActorTypeCollection
 	} else if level == 2 {
-		a.actorType = ActorTypeObject
+		a.actorType = ActorTypeModel
+	} else if level == 3 {
+		a.actorType = ActorTypeAttribute
 	}
-	// TODO check for more levels.
-	// TODO check for objectId is valid hex or not
 
 	a.res = res
 	a.level = level
@@ -135,13 +141,16 @@ var handleRequest = func(a *Actor, requestWrapper messages.RequestWrapper) (resp
 	var isGranted bool
 	var user map[string]interface{}
 	var err *utils.Error
+	var hookBody map[string]interface{}
 
 	// TODO check for not allowed commands on resources. for ex: DELETE /topics, POST /users/123
+
+	//	isActorTypeFunctions := strings.EqualFold(a.actorType, ActorTypeFunctions)
 
 	isGranted, user, err = auth.IsGranted(requestWrapper, a.adapter)
 
 	if isGranted && err == nil {
-		response, err = ExecuteTrigger(a, user, requestWrapper, "before")
+		response, err = executeTrigger(a, user, requestWrapper, "before")
 		if response.Body != nil {
 			// replace request body with the one that hook server returns
 			requestWrapper.Message.Body = response.Body
@@ -153,13 +162,13 @@ var handleRequest = func(a *Actor, requestWrapper messages.RequestWrapper) (resp
 	} else if !isGranted {
 		err = &utils.Error{http.StatusUnauthorized, "Unauthorized."}
 	} else if (strings.EqualFold(a.actorType, ActorTypeFunctions)) {
-		response, err = handleFunctionCall(a, user, requestWrapper)
+		response, err = executeFunction(a, user, requestWrapper)
 	} else if strings.EqualFold(requestWrapper.Message.Command, "get") {
 		response, err = handleGet(a, requestWrapper)
 	} else if strings.EqualFold(requestWrapper.Message.Command, "post") {
-		response, requestWrapper.Message.Body, err = handlePost(a, requestWrapper)
+		response, hookBody, err = handlePost(a, requestWrapper)
 	} else if strings.EqualFold(requestWrapper.Message.Command, "put") {
-		response, err = handlePut(a, requestWrapper)
+		response, hookBody, err = handlePut(a, requestWrapper)
 	} else if strings.EqualFold(requestWrapper.Message.Command, "delete") {
 		response, err = handleDelete(a, requestWrapper)
 	}
@@ -170,12 +179,14 @@ var handleRequest = func(a *Actor, requestWrapper messages.RequestWrapper) (resp
 	}
 
 	// TODO: call hooks.ExecuteTrigger in goroutine
-	//	hooks.ExecuteTrigger(a.class, "after", requestWrapper.Message.Command, user, requestWrapper.Message)
-	ExecuteTrigger(a, user, requestWrapper, "after")
+	var hookRequestWrapper = messages.RequestWrapper{}
+	hookRequestWrapper.Message = requestWrapper.Message
+	hookRequestWrapper.Message.Body = hookBody
+	executeTrigger(a, user, hookRequestWrapper, "after")
 	return
 }
 
-var ExecuteTrigger = func(a *Actor, user interface{}, requestWrapper messages.RequestWrapper, when string) (response messages.Message, err *utils.Error) {
+var executeTrigger = func(a *Actor, user interface{}, requestWrapper messages.RequestWrapper, when string) (response messages.Message, err *utils.Error) {
 
 	response.Body, err = hooks.ExecuteTrigger(a.class, when,
 		requestWrapper.Message.Command,
@@ -192,21 +203,26 @@ var ExecuteTrigger = func(a *Actor, user interface{}, requestWrapper messages.Re
 	return
 }
 
-var handleFunctionCall = func(a *Actor, user interface{}, requestWrapper messages.RequestWrapper) (response messages.Message, err *utils.Error) {
-	status, rBody, fErr := functions.ExecuteCustomFunction(a.res, user, requestWrapper.Message)
-	if fErr != nil {
-		err = fErr
-		utils.Log("error", err.Message)
+var executeFunction = func(a *Actor, user interface{}, requestWrapper messages.RequestWrapper) (response messages.Message, err *utils.Error) {
+
+	response.Body, err = hooks.ExecuteFunction(a.res,
+		requestWrapper.Message.Parameters,
+		requestWrapper.Message.Body,
+		user)
+
+	if err != nil {
+		if response.Body == nil {
+			response.Body = map[string]interface{}{"message": err.Message}
+		}
+		return
 	}
-	response.Status = status
-	response.Body = rBody
 	return
 }
 
 var handleGet = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err *utils.Error) {
 
 	isFileClass := strings.EqualFold(a.class, ClassFiles)
-	isObjectTypeActor := strings.EqualFold(a.actorType, ActorTypeObject)
+	isObjectTypeActor := strings.EqualFold(a.actorType, ActorTypeModel)
 	isCollectionTypeActor := strings.EqualFold(a.actorType, ActorTypeCollection)
 
 	if isObjectTypeActor {
@@ -253,18 +269,18 @@ var handlePost = func(a *Actor, requestWrapper messages.RequestWrapper) (respons
 	} else if strings.EqualFold(a.actorType, ActorTypeCollection) {                // create object request
 		response.Body, hookBody, err = adapters.HandlePost(a.adapter, requestWrapper)
 		if err == nil {response.Status = http.StatusCreated}
-	} else if strings.EqualFold(a.actorType, ActorTypeObject) {                    // post on objects are not allowed
+	} else if strings.EqualFold(a.actorType, ActorTypeModel) {                    // post on objects are not allowed
 		response.Status = http.StatusBadRequest
 	}
 	return
 }
 
-var handlePut = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err *utils.Error) {
+var handlePut = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, hookBody map[string]interface{}, err *utils.Error) {
 
 	if strings.EqualFold(a.actorType, ActorTypeCollection) {            // put on resources are not allowed
 		response.Status = http.StatusBadRequest
-	} else if strings.EqualFold(a.actorType, ActorTypeObject) {        // update object
-		response.Body, err = adapters.HandlePut(a.adapter, requestWrapper)
+	} else if strings.EqualFold(a.actorType, ActorTypeModel) {        // update object
+		response.Body, hookBody, err = adapters.HandlePut(a.adapter, requestWrapper)
 	}
 	return
 }
@@ -273,7 +289,7 @@ var handleDelete = func(a *Actor, requestWrapper messages.RequestWrapper) (respo
 
 	if strings.EqualFold(a.actorType, ActorTypeCollection) {            // delete on resources are not allowed
 		response.Status = http.StatusBadRequest
-	} else if strings.EqualFold(a.actorType, ActorTypeObject) {        // delete object
+	} else if strings.EqualFold(a.actorType, ActorTypeModel) {        // delete object
 		response.Body, err = adapters.HandleDelete(a.adapter, requestWrapper)
 		if err == nil {
 			response.Status = http.StatusNoContent

@@ -116,7 +116,7 @@ func readConfig() (configuration config.Config, err *utils.Error) {
 
 func parseRequest(r *http.Request) (requestWrapper messages.RequestWrapper, err *utils.Error) {
 
-	res := r.URL.Path
+	res := strings.TrimRight(r.URL.Path, "/")
 	requestWrapper.Res = res
 	requestWrapper.Message.Res = res
 	requestWrapper.Message.Command = r.Method

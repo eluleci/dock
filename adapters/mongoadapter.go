@@ -256,7 +256,7 @@ var HandleGet = func(m *MongoAdapter, requestWrapper messages.RequestWrapper) (r
 	return
 }
 
-var HandlePut = func(m *MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
+var HandlePut = func(m *MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
 
 	message := requestWrapper.Message
 	if message.Body == nil {
@@ -285,9 +285,18 @@ var HandlePut = func(m *MongoAdapter, requestWrapper messages.RequestWrapper) (r
 		return
 	}
 
-	response = make(map[string]interface{})
-	response["updatedAt"] = message.Body["updatedAt"]
+	response = map[string]interface{}{
+		"updatedAt": message.Body["updatedAt"],
+	}
+	hookBody = map[string]interface{}{
+		"_id": id,
+		"updatedAt": message.Body["updatedAt"],
+	}
 
+	// adding the fields (which are updated) to hook request
+	for k, v := range message.Body {
+		hookBody[k] = v
+	}
 	return
 }
 

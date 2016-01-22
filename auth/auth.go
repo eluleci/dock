@@ -361,7 +361,7 @@ var HandleResetPassword = func(requestWrapper messages.RequestWrapper, dbAdapter
 	}
 	updatePasswordRW.Message = updatePasswordM
 
-	response.Body, err = adapters.HandlePut(dbAdapter, updatePasswordRW)
+	response.Body, _, err = adapters.HandlePut(dbAdapter, updatePasswordRW)
 
 	if err != nil {
 		return
@@ -411,6 +411,11 @@ var IsGranted = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters
 	if strings.EqualFold(res, ResourceLogin) || strings.EqualFold(res, ResourceRegister) || strings.HasPrefix(res, ResourceFunctions) {
 		isGranted = true
 		return
+	}
+
+	// if res contains ':' then this is a function uri. remove the function name and get the permissions on real uri
+	if strings.Index(res, "-") > 0 {
+		requestWrapper.Res = requestWrapper.Res[:strings.Index(requestWrapper.Res, "-") - 1]
 	}
 
 	if strings.Count(requestWrapper.Res, "/") == 1 {

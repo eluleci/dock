@@ -27,7 +27,7 @@ var _handlePost = func(a *Actor, requestWrapper messages.RequestWrapper) (respon
 	return
 }
 
-var _handlePut = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err *utils.Error) {
+var _handlePut = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, hookBody map[string]interface{}, err *utils.Error) {
 	return
 }
 
@@ -304,7 +304,7 @@ func TestHandleRequest(t *testing.T) {
 		auth.IsGranted = isGrantedFuncThatReturnsTrue
 
 		var called bool
-		handlePut = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, err *utils.Error) {
+		handlePut = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, hookBody map[string]interface{}, err *utils.Error) {
 			called = true
 			return
 		}
@@ -426,7 +426,7 @@ func TestHandleGet(t *testing.T) {
 		}
 
 		var actor Actor
-		actor.actorType = ActorTypeObject
+		actor.actorType = ActorTypeModel
 		_, err := handleGet(&actor, messages.RequestWrapper{})
 		So(err, ShouldBeNil)
 		So(called, ShouldBeTrue)
@@ -501,7 +501,7 @@ func TestHandlePost(t *testing.T) {
 	Convey("Should return bad request", t, func() {
 
 		var actor Actor
-		actor.actorType = ActorTypeObject
+		actor.actorType = ActorTypeModel
 
 		response, _, err := handlePost(&actor, messages.RequestWrapper{})
 		So(err, ShouldBeNil)
@@ -518,7 +518,7 @@ func TestHandlePut(t *testing.T) {
 		var actor Actor
 		actor.actorType = ActorTypeCollection
 
-		response, err := handlePut(&actor, messages.RequestWrapper{})
+		response, _, err := handlePut(&actor, messages.RequestWrapper{})
 		So(err, ShouldBeNil)
 		So(response.Status, ShouldEqual, http.StatusBadRequest)
 	})
@@ -526,15 +526,15 @@ func TestHandlePut(t *testing.T) {
 	Convey("Should call auth.HandleSignUp", t, func() {
 
 		var actor Actor
-		actor.actorType = ActorTypeObject
+		actor.actorType = ActorTypeModel
 
 		var called bool
-		adapters.HandlePut = func(m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
+		adapters.HandlePut = func(m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
 			called = true
 			return
 		}
 
-		_, err := handlePut(&actor, messages.RequestWrapper{})
+		_, _, err := handlePut(&actor, messages.RequestWrapper{})
 		So(err, ShouldBeNil)
 		So(called, ShouldBeTrue)
 	})
@@ -555,7 +555,7 @@ func TestHandleDelete(t *testing.T) {
 	Convey("Should call auth.HandleSignUp", t, func() {
 
 		var actor Actor
-		actor.actorType = ActorTypeObject
+		actor.actorType = ActorTypeModel
 
 		var called bool
 		adapters.HandleDelete = func(m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
