@@ -28,23 +28,50 @@ var MongoDB *mgo.Database
 
 var Connect = func(config config.Config) (err *utils.Error) {
 
-	address, hasAddress := config.Mongo["address"]
-	name, hasName := config.Mongo["name"]
-	if !hasAddress || !hasName {
-		err = &utils.Error{http.StatusInternalServerError, "Database 'address' and 'name' must be specified in dock-config.json."};
+	addresses, hasAddress := config.Mongo["addresses"]
+	if !hasAddress {
+		err = &utils.Error{http.StatusInternalServerError, "Database 'addresses' must be specified in configuration file."};
 		return
 	}
 
-	session, mongoerr := mgo.Dial(address)
+	addressesAsStrings := make([]string, len(addresses.([]interface{})))
+	for i, v := range addresses.([]interface{}) {addressesAsStrings[i] = v.(string)}
+
+	info := &mgo.DialInfo{
+		Addrs:    addressesAsStrings,
+	}
+
+	database, hasDatabase := config.Mongo["database"]
+	if !hasDatabase {
+		err = &utils.Error{http.StatusInternalServerError, "Database name must be specified in 'database' in configuration file."};
+		return
+	}
+
+	authDatabase, hasAuthDatabase := config.Mongo["authDatabase"]
+	if hasAuthDatabase {
+		info.Database = authDatabase.(string)
+	}
+
+	username, hasUsername := config.Mongo["username"]
+	if hasUsername {
+		info.Username = username.(string)
+	}
+
+	password, hasPassword := config.Mongo["password"]
+	if hasPassword {
+		info.Password = password.(string)
+	}
+
+	session, mongoerr := mgo.DialWithInfo(info)
 	if mongoerr != nil {
-		err = &utils.Error{http.StatusInternalServerError, "Database connection failed."};
+		err = &utils.Error{http.StatusInternalServerError, "Database connection failed: " + mongoerr.Error()};
 		return
 	}
 
 	// TODO: find a proper way to close the session
 	// defer session.Close()
 
-	MongoDB = session.DB(name)
+	MongoDB = session.DB(database.(string))
 	return
 
 }

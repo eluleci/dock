@@ -4,11 +4,11 @@
 docker pull eluleci/dock
 
 # remove stopped containers
-for existingContainerId in $(docker ps  --filter="name=Dock" -q -a);do docker stop $existingContainerId && docker rm $existingContainerId;done
+for existingContainerId in $(docker ps  --filter="name=mentornity-api" -q -a);do docker stop $existingContainerId && docker rm $existingContainerId;done
 
 # run image
-docker run --publish 80:1707 --name Dock --restart=always eluleci/dock
-newContainerId=`docker ps  --filter="name=Dock" -q -a`
+docker run --publish 1707:1707 --name mentornity-api --restart=always eluleci/dock
+newContainerId=`docker ps  --filter="name=mentornity-api" -q -a`
 
 # copy the dock-config.json to the container
 docker cp dock-config.json $newContainerId:/go/dock-config.json

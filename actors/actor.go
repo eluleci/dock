@@ -25,6 +25,7 @@ const (
 	ResourceRegister = "/register"
 	ResourceLogin = "/login"
 	ResourceResetPassword = "/resetpassword"
+	ResourceChangePassword = "/changepassword"
 )
 
 type Actor struct {
@@ -45,7 +46,7 @@ var CreateActor = func(res string, level int, parentInbox chan messages.RequestW
 
 	var isFunctionActor bool
 	var className string
-	if strings.EqualFold(res, ResourceLogin) || strings.EqualFold(res, ResourceRegister) || strings.EqualFold(res, ResourceResetPassword) {
+	if strings.EqualFold(res, ResourceLogin) || strings.EqualFold(res, ResourceRegister) || strings.EqualFold(res, ResourceResetPassword) || strings.EqualFold(res, ResourceChangePassword) {
 		className = ClassUsers
 	} else {
 		resParts := strings.Split(res, "/")
@@ -166,7 +167,7 @@ var handleRequest = func(a *Actor, requestWrapper messages.RequestWrapper) (resp
 	} else if strings.EqualFold(requestWrapper.Message.Command, "get") {
 		response, err = handleGet(a, requestWrapper)
 	} else if strings.EqualFold(requestWrapper.Message.Command, "post") {
-		response, hookBody, err = handlePost(a, requestWrapper)
+		response, hookBody, err = handlePost(a, requestWrapper, user)
 	} else if strings.EqualFold(requestWrapper.Message.Command, "put") {
 		response, hookBody, err = handlePut(a, requestWrapper)
 	} else if strings.EqualFold(requestWrapper.Message.Command, "delete") {
@@ -256,12 +257,14 @@ var handleGet = func(a *Actor, requestWrapper messages.RequestWrapper) (response
 	return
 }
 
-var handlePost = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, hookBody map[string]interface{}, err *utils.Error) {
+var handlePost = func(a *Actor, requestWrapper messages.RequestWrapper, user interface{}) (response messages.Message, hookBody map[string]interface{}, err *utils.Error) {
 
 	if strings.EqualFold(a.res, ResourceRegister) {                                // sign up request
 		response, hookBody, err = auth.HandleSignUp(requestWrapper, a.adapter)
 	} else if strings.EqualFold(a.res, ResourceLogin) {                            // login request
 		response, err = auth.HandleLogin(requestWrapper, a.adapter)
+	} else if strings.EqualFold(a.res, ResourceChangePassword) {                   // reset password
+		response, err = auth.HandleChangePassword(requestWrapper, a.adapter, user)
 	} else if strings.EqualFold(a.res, ResourceResetPassword) {                    // reset password
 		response, err = auth.HandleResetPassword(requestWrapper, a.adapter)
 	} else if strings.EqualFold(a.res, ResourceTypeUsers) {                        // post on users not allowed

@@ -313,6 +313,58 @@ var HandleLogin = func(requestWrapper messages.RequestWrapper, dbAdapter *adapte
 	return
 }
 
+var HandleChangePassword = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter, user interface{}) (response messages.Message, err *utils.Error) {
+
+	userAsMap := user.(map[string]interface{})
+
+	if len(userAsMap) == 0 {
+		err = &utils.Error{http.StatusUnauthorized, "Access token must be provided for change password request."}
+		return
+	}
+
+	password, hasPassword := requestWrapper.Message.Body["password"]
+	if !hasPassword {
+		err = &utils.Error{http.StatusBadRequest, "Password must be provided in the body with field 'password'."}
+		return
+	}
+
+	newPassword, hasNewPassword := requestWrapper.Message.Body["newPassword"]
+	if !hasNewPassword {
+		err = &utils.Error{http.StatusBadRequest, "New password must be provided in the body with field 'newPassword'."}
+		return
+	}
+
+	existingPassword := userAsMap["password"].(string)
+
+	passwordError := bcrypt.CompareHashAndPassword([]byte(existingPassword), []byte(password.(string)))
+	if passwordError != nil {
+		err = &utils.Error{http.StatusUnauthorized, "Existing password is not correct."}
+		return
+	}
+
+	hashedPassword, hashErr := bcrypt.GenerateFromPassword([]byte(newPassword.(string)), bcrypt.DefaultCost)
+	if hashErr != nil {
+		err = &utils.Error{http.StatusInternalServerError, "Hashing new password failed."}
+		return
+	}
+
+	updatePasswordRW := messages.RequestWrapper{}
+	updatePasswordM := messages.Message{}
+	updatePasswordM.Res = ResourceTypeUsers + "/" + userAsMap["_id"].(string)
+	updatePasswordM.Body = map[string]interface{}{
+		"password": string(hashedPassword),
+	}
+	updatePasswordRW.Message = updatePasswordM
+
+	response.Body, _, err = adapters.HandlePut(dbAdapter, updatePasswordRW)
+
+	if err != nil {
+		return
+	}
+
+	return
+}
+
 var HandleResetPassword = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (response messages.Message, err *utils.Error) {
 
 	resetPasswordConfig := config.SystemConfig.ResetPassword

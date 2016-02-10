@@ -6,7 +6,7 @@ type Config struct {
 	 * address:		IP of the MongoDB server (required)
 	 * name:		Name of the database on the server (required)
 	 */
-	Mongo         map[string]string `json:"mongo,omitempty"`
+	Mongo         map[string]interface{} `json:"mongo,omitempty"`
 
 	/* Facebook configuration. Used for registration with Facebook account. Fields:
 	 * appId:		Facebook app id	(required)
