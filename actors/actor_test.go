@@ -23,7 +23,7 @@ var _handleGet = func(a *Actor, requestWrapper messages.RequestWrapper) (respons
 	return
 }
 
-var _handlePost = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, hookBody map[string]interface{}, err *utils.Error) {
+var _handlePost = func(a *Actor, requestWrapper messages.RequestWrapper, user interface{}) (response messages.Message, hookBody map[string]interface{}, err *utils.Error) {
 	return
 }
 
@@ -262,7 +262,7 @@ func TestHandleRequest(t *testing.T) {
 		auth.IsGranted = isGrantedFuncThatReturnsTrue
 
 		var called bool
-		handlePost = func(a *Actor, requestWrapper messages.RequestWrapper) (response messages.Message, hookBody map[string]interface{}, err *utils.Error) {
+		handlePost = func(a *Actor, requestWrapper messages.RequestWrapper, user interface{}) (response messages.Message, hookBody map[string]interface{}, err *utils.Error) {
 			called = true
 			return
 		}
@@ -410,7 +410,7 @@ func TestHandleGet(t *testing.T) {
 
 		var actor Actor
 		actor.res = ResourceLogin
-		_, _, err := handlePost(&actor, messages.RequestWrapper{})
+		_, _, err := handlePost(&actor, messages.RequestWrapper{}, nil)
 		So(err, ShouldBeNil)
 		So(called, ShouldBeTrue)
 
@@ -459,7 +459,7 @@ func TestHandlePost(t *testing.T) {
 
 		var actor Actor
 		actor.res = ResourceTypeUsers
-		response, _, _ := handlePost(&actor, messages.RequestWrapper{})
+		response, _, _ := handlePost(&actor, messages.RequestWrapper{}, nil)
 		So(response.Status, ShouldEqual, http.StatusMethodNotAllowed)
 
 	})
@@ -475,7 +475,7 @@ func TestHandlePost(t *testing.T) {
 			return
 		}
 
-		_, _, err := handlePost(&actor, messages.RequestWrapper{})
+		_, _, err := handlePost(&actor, messages.RequestWrapper{}, nil)
 		So(err, ShouldBeNil)
 		So(called, ShouldBeTrue)
 
@@ -492,7 +492,7 @@ func TestHandlePost(t *testing.T) {
 			return
 		}
 
-		response, _, err := handlePost(&actor, messages.RequestWrapper{})
+		response, _, err := handlePost(&actor, messages.RequestWrapper{}, nil)
 		So(err, ShouldBeNil)
 		So(called, ShouldBeTrue)
 		So(response.Status, ShouldEqual, http.StatusCreated)
@@ -503,7 +503,7 @@ func TestHandlePost(t *testing.T) {
 		var actor Actor
 		actor.actorType = ActorTypeModel
 
-		response, _, err := handlePost(&actor, messages.RequestWrapper{})
+		response, _, err := handlePost(&actor, messages.RequestWrapper{}, nil)
 		So(err, ShouldBeNil)
 		So(response.Status, ShouldEqual, http.StatusBadRequest)
 	})
