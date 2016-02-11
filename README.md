@@ -10,8 +10,14 @@ Configurations, such as database, are provided with **dock-config.json** file an
 ```
 {
   "mongo": {
-    "address":  "localhost",
-    "name":     "dock-db"
+    "addresses": [
+      "db1.myapp.com",
+      "db2.myapp.com"
+    ],
+    "authDatabase": "admin",
+    "database": "myDatabaseName",
+    "username": "myUserName",
+    "password": "myPassword"
   }
 }
 ```
