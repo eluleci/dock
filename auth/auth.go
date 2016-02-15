@@ -638,10 +638,10 @@ var getAccountData = func(requestWrapper messages.RequestWrapper, dbAdapter *ada
 	}
 	requestWrapper.Message.Parameters["where"] = []string{string(whereParamsJson)}
 
-	results, fetchErr := adapters.HandleGet(dbAdapter, requestWrapper)
+	results, fetchErr := adapters.HandleGet(ClassUsers, requestWrapper.Message.Parameters)
 	resultsAsMap := results["data"].([]map[string]interface{})
 	if fetchErr != nil || len(resultsAsMap) == 0 {
-		err = &utils.Error{http.StatusNotFound, "Item not found."}
+		err = &utils.Error{http.StatusNotFound, "Account not found."}
 		return
 	}
 	accountData = resultsAsMap[0]

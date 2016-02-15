@@ -191,13 +191,17 @@ var GetFile = func(id string) (response []byte, err *utils.Error) {
 	return
 }
 
-var HandleGet = func(m *MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
+var HandleGet = func(collection string, parameters map[string][]string) (response map[string]interface{}, err *utils.Error) {
 
-	message := requestWrapper.Message
+	// HandleGet(collection, params) (response, error)
+
+	sessionCopy := Session.Copy()
+	defer sessionCopy.Close()
+	connection := sessionCopy.DB(Database).C(collection)
 
 	response = make(map[string]interface{})
 
-	if message.Parameters["aggregate"] != nil && message.Parameters["where"] != nil {
+	if parameters["aggregate"] != nil && parameters["where"] != nil {
 		err = &utils.Error{http.StatusBadRequest, "Where and aggregate parameters cannot be used at the same request."}
 		return
 	}
@@ -205,11 +209,11 @@ var HandleGet = func(m *MongoAdapter, requestWrapper messages.RequestWrapper) (r
 	var results []map[string]interface{}
 	var getErr error
 
-	whereParam, hasWhereParam, whereParamErr := extractJsonParameter(message, "where")
-	aggregateParam, hasAggregateParam, aggregateParamErr := extractJsonParameter(message, "aggregate")
-	sortParam, hasSortParam, sortParamErr := extractStringParameter(message, "sort")
-	limitParam, _, limitParamErr := extractIntParameter(message, "limit")
-	skipParam, _, skipParamErr := extractIntParameter(message, "skip")
+	whereParam, hasWhereParam, whereParamErr := extractJsonParameter(parameters, "where")
+	aggregateParam, hasAggregateParam, aggregateParamErr := extractJsonParameter(parameters, "aggregate")
+	sortParam, hasSortParam, sortParamErr := extractStringParameter(parameters, "sort")
+	limitParam, _, limitParamErr := extractIntParameter(parameters, "limit")
+	skipParam, _, skipParamErr := extractIntParameter(parameters, "skip")
 
 	if aggregateParamErr != nil {err = aggregateParamErr}
 	if whereParamErr != nil {err = whereParamErr}
@@ -224,9 +228,9 @@ var HandleGet = func(m *MongoAdapter, requestWrapper messages.RequestWrapper) (r
 	}
 
 	if hasAggregateParam {
-		getErr = m.Collection.Pipe(aggregateParam).All(&results)
+		getErr = connection.Pipe(aggregateParam).All(&results)
 	} else {
-		query := m.Collection.Find(whereParam).Skip(skipParam).Limit(limitParam)
+		query := connection.Find(whereParam).Skip(skipParam).Limit(limitParam)
 		if hasSortParam {
 			query = query.Sort(sortParam)
 		}
@@ -305,10 +309,10 @@ var HandleDelete = func(m *MongoAdapter, requestWrapper messages.RequestWrapper)
 	return
 }
 
-var extractJsonParameter = func(message messages.Message, key string) (value interface{}, hasParam bool, err *utils.Error) {
+var extractJsonParameter = func(parameters map[string][]string, key string) (value interface{}, hasParam bool, err *utils.Error) {
 
 	var paramArray []string
-	paramArray, hasParam = message.Parameters[key]
+	paramArray, hasParam = parameters[key]
 
 	if hasParam {
 		parseErr := json.Unmarshal([]byte(paramArray[0]), &value)
@@ -320,10 +324,10 @@ var extractJsonParameter = func(message messages.Message, key string) (value int
 	return
 }
 
-var extractStringParameter = func(message messages.Message, key string) (value string, hasParam bool, err *utils.Error) {
+var extractStringParameter = func(parameters map[string][]string, key string) (value string, hasParam bool, err *utils.Error) {
 
 	var paramArray []string
-	paramArray, hasParam = message.Parameters[key]
+	paramArray, hasParam = parameters[key]
 
 	if hasParam {
 		var paramValue interface{}
@@ -346,10 +350,10 @@ var extractStringParameter = func(message messages.Message, key string) (value s
 	return
 }
 
-var extractIntParameter = func(message messages.Message, key string) (value int, hasParam bool, err *utils.Error) {
+var extractIntParameter = func(parameters map[string][]string, key string) (value int, hasParam bool, err *utils.Error) {
 
 	var paramArray []string
-	paramArray, hasParam = message.Parameters[key]
+	paramArray, hasParam = parameters[key]
 
 	if hasParam {
 		var paramValue interface{}

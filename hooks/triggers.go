@@ -3,7 +3,6 @@ package hooks
 import (
 	"github.com/eluleci/dock/utils"
 	"net/http"
-	"github.com/eluleci/dock/messages"
 	"encoding/json"
 	"github.com/eluleci/dock/adapters"
 	"strings"
@@ -39,6 +38,7 @@ var ExecuteFunction = func(res string, parameters map[string][]string, body map[
 }
 
 var getFunctionData = func(name string) (function map[string]interface{}, err *utils.Error) {
+
 	whereParams := map[string]interface{}{
 		"name": map[string]string{
 			"$eq": name,
@@ -50,13 +50,9 @@ var getFunctionData = func(name string) (function map[string]interface{}, err *u
 		err = &utils.Error{http.StatusInternalServerError, "Creating 'get function info' request failed."}
 		return
 	}
-	requestWrapper := messages.RequestWrapper{}
-	requestWrapper.Message.Parameters = make(map[string][]string)
-	requestWrapper.Message.Parameters["where"] = []string{string(whereParamsJson)}
 
-	// TODO: optimise adapter not to require redundant instance creation
-	adapter := &adapters.MongoAdapter{adapters.MongoDB.C("functions")}
-	results, fetchErr := adapters.HandleGet(adapter, requestWrapper)
+	parameters := map[string][]string {"where": []string{string(whereParamsJson)}}
+	results, fetchErr := adapters.HandleGet("functions", parameters)
 
 	if fetchErr != nil {
 		err = fetchErr
@@ -120,13 +116,9 @@ var getTriggerData = func(className, when, method string) (trigger map[string]in
 		err = &utils.Error{http.StatusInternalServerError, "Creating 'get trigger info' request failed."}
 		return
 	}
-	requestWrapper := messages.RequestWrapper{}
-	requestWrapper.Message.Parameters = make(map[string][]string)
-	requestWrapper.Message.Parameters["where"] = []string{string(whereParamsJson)}
 
-	// TODO: optimise adapter not to require redundant instance creation
-	adapter := &adapters.MongoAdapter{adapters.MongoDB.C("triggers")}
-	results, fetchErr := adapters.HandleGet(adapter, requestWrapper)
+	parameters := map[string][]string {"where": []string{string(whereParamsJson)}}
+	results, fetchErr := adapters.HandleGet("triggers", parameters)
 
 	if fetchErr != nil {
 		err = fetchErr

@@ -234,7 +234,7 @@ var handleGet = func(a *Actor, requestWrapper messages.RequestWrapper) (response
 			response.Body, err = adapters.HandleGetById(a.class, id)
 		}
 	} else if isCollectionTypeActor {                    // query objects
-		response.Body, err = adapters.HandleGet(a.adapter, requestWrapper)
+		response.Body, err = adapters.HandleGet(a.class, requestWrapper.Message.Parameters)
 	}
 
 	if err != nil {
