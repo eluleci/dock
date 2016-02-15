@@ -297,17 +297,16 @@ var HandlePut = func(collection string, id string, data map[string]interface{}) 
 	return
 }
 
-var HandleDelete = func(m *MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
+var HandleDelete = func(collection string, id string) (response map[string]interface{}, err *utils.Error) {
 
-	message := requestWrapper.Message
-	id := message.Res[strings.LastIndex(message.Res, "/") + 1:]
+	sessionCopy := Session.Copy()
+	defer sessionCopy.Close()
+	connection := sessionCopy.DB(Database).C(collection)
 
-	removeErr := m.Collection.RemoveId(id)
+	removeErr := connection.RemoveId(id)
 	if removeErr != nil {
 		err = &utils.Error{http.StatusNotFound, "Item not found."};
-		return
 	}
-
 	return
 }
 

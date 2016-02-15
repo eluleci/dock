@@ -294,7 +294,8 @@ var handleDelete = func(a *Actor, requestWrapper messages.RequestWrapper) (respo
 	if strings.EqualFold(a.actorType, ActorTypeCollection) {            // delete on resources are not allowed
 		response.Status = http.StatusBadRequest
 	} else if strings.EqualFold(a.actorType, ActorTypeModel) {        // delete object
-		response.Body, err = adapters.HandleDelete(a.adapter, requestWrapper)
+		id := requestWrapper.Message.Res[strings.LastIndex(requestWrapper.Message.Res, "/") + 1:]
+		response.Body, err = adapters.HandleDelete(a.class, id)
 		if err == nil {
 			response.Status = http.StatusNoContent
 		}
