@@ -18,10 +18,19 @@ import (
 )
 
 const (
+	ActorTypeRoot = "root"
+	ActorTypeCollection = "collection"
+	ActorTypeModel = "model"
+	ActorTypeAttribute = "attribute"
+	ActorTypeFunctions = "functions"
+	ClassUsers = "users"
+	ClassFiles = "files"
+	ResourceTypeUsers = "/users"
+	ResourceTypeFiles = "/files"
 	ResourceRegister = "/register"
 	ResourceLogin = "/login"
-	ResourceTypeUsers = "/users"
-	ResourceFunctions = "/functions"
+	ResourceResetPassword = "/resetpassword"
+	ResourceChangePassword = "/changepassword"
 )
 
 // used for password generation
@@ -119,7 +128,7 @@ var createLocalAccount = func(requestWrapper messages.RequestWrapper, dbAdapter 
 	}
 	requestWrapper.Message.Body["password"] = string(hashedPassword)
 
-	response, hookBody, err = adapters.HandlePost(dbAdapter, requestWrapper)
+	response, hookBody, err = adapters.HandlePost(ClassUsers ,dbAdapter, requestWrapper)
 	return
 }
 
@@ -199,7 +208,7 @@ var handleFacebookAuth = func(requestWrapper messages.RequestWrapper, dbAdapter 
 	existingAccount, _ := getAccountData(requestWrapper, dbAdapter)
 
 	if existingAccount == nil {
-		response, hookBody, err = adapters.HandlePost(dbAdapter, requestWrapper)
+		response, hookBody, err = adapters.HandlePost(ClassUsers, dbAdapter, requestWrapper)
 		response["isNewUser"] = true
 	} else {
 		response = existingAccount
@@ -265,7 +274,7 @@ var handleGoogleAuth = func(requestWrapper messages.RequestWrapper, dbAdapter *a
 	existingAccount, _ := getAccountData(requestWrapper, dbAdapter)
 
 	if existingAccount == nil {
-		response, hookBody, err = adapters.HandlePost(dbAdapter, requestWrapper)
+		response, hookBody, err = adapters.HandlePost(ClassUsers, dbAdapter, requestWrapper)
 		response["isNewUser"] = true
 	} else {
 		response = existingAccount
@@ -460,7 +469,7 @@ var IsGranted = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters
 	}
 
 	res := requestWrapper.Res
-	if strings.EqualFold(res, ResourceLogin) || strings.EqualFold(res, ResourceRegister) || strings.HasPrefix(res, ResourceFunctions) {
+	if strings.EqualFold(res, ResourceLogin) || strings.EqualFold(res, ResourceRegister) {
 		isGranted = true
 		return
 	}

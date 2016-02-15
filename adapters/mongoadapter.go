@@ -17,7 +17,6 @@ import (
 	"io"
 	"errors"
 	"encoding/base64"
-	"net/url"
 )
 
 type MongoAdapter struct {
@@ -25,6 +24,8 @@ type MongoAdapter struct {
 }
 
 var MongoDB *mgo.Database
+var Database string
+var Session *mgo.Session
 
 var Connect = func(config config.Config) (err *utils.Error) {
 
@@ -37,14 +38,16 @@ var Connect = func(config config.Config) (err *utils.Error) {
 	addressesAsStrings := make([]string, len(addresses.([]interface{})))
 	for i, v := range addresses.([]interface{}) {addressesAsStrings[i] = v.(string)}
 
-	info := &mgo.DialInfo{
-		Addrs:    addressesAsStrings,
-	}
-
 	database, hasDatabase := config.Mongo["database"]
 	if !hasDatabase {
 		err = &utils.Error{http.StatusInternalServerError, "Database name must be specified in 'database' in configuration file."};
 		return
+	}
+	Database = database.(string)
+
+	info := &mgo.DialInfo{
+		Addrs:    addressesAsStrings,
+		Database: Database,
 	}
 
 	authDatabase, hasAuthDatabase := config.Mongo["authDatabase"]
@@ -62,106 +65,71 @@ var Connect = func(config config.Config) (err *utils.Error) {
 		info.Password = password.(string)
 	}
 
-	session, mongoerr := mgo.DialWithInfo(info)
-	if mongoerr != nil {
-		err = &utils.Error{http.StatusInternalServerError, "Database connection failed: " + mongoerr.Error()};
+	var dialErr error
+	Session, dialErr = mgo.DialWithInfo(info)
+	if dialErr != nil {
+		err = &utils.Error{http.StatusInternalServerError, "Database connection failed: " + dialErr.Error()};
 		return
 	}
 
 	// TODO: find a proper way to close the session
 	// defer session.Close()
 
-	MongoDB = session.DB(database.(string))
+	MongoDB = Session.DB(Database)
 	return
 
 }
 
-var HandlePost = func(m *MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
+var HandlePost = func(collection string, m *MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
+
+	// HandlePost(collection, data) (response, hookBody, error)
+
+	sessionCopy := Session.Copy()
+	defer sessionCopy.Close()
+	defer func() {
+		fmt.Println("deferred")
+	}()
 
 	if strings.EqualFold("/files", requestWrapper.Res) {
 
-		if requestWrapper.Message.MultipartForm == nil {    // data is in the body
+		objectId := bson.NewObjectId()
+		now := time.Now()
+		fileName := objectId.Hex()
 
-			objectId := bson.NewObjectId()
-			now := time.Now()
-			fileName := objectId.Hex()
-
-			gridFile, mongoErr := MongoDB.GridFS("fs").Create(fileName)
-			if mongoErr != nil {
-				fmt.Println(mongoErr)
-				err = &utils.Error{http.StatusInternalServerError, "Creating file failed."}
-				return
-			}
-			gridFile.SetId(fileName)
-			gridFile.SetName(fileName)
-			gridFile.SetUploadDate(now)
-
-			dec := base64.NewDecoder(base64.StdEncoding, requestWrapper.Message.ReqBodyRaw)
-			_, copyErr := io.Copy(gridFile, dec)
-			if copyErr != nil {
-				fmt.Println(copyErr)
-				err = &utils.Error{http.StatusInternalServerError, "Writing file failed."}
-				return
-			}
-
-			closeErr := gridFile.Close()
-			if closeErr != nil {
-				fmt.Println(closeErr)
-				err = &utils.Error{http.StatusInternalServerError, "Closing file failed."}
-				return
-			}
-
-			response = make(map[string]interface{})
-			response["_id"] = fileName
-			response["createdAt"] = int32(now.Unix())
-			hookBody = response
+		gridFile, mongoErr := MongoDB.GridFS("fs").Create(fileName)
+		if mongoErr != nil {
+			fmt.Println(mongoErr)
+			err = &utils.Error{http.StatusInternalServerError, "Creating file failed."}
 			return
-		} else {
+		}
+		gridFile.SetId(fileName)
+		gridFile.SetName(fileName)
+		gridFile.SetUploadDate(now)
 
-			if len(requestWrapper.Message.MultipartForm.File) > 1 {
-				err = &utils.Error{http.StatusBadRequest, "Only one file can be uploaded with one request."}
-				return
-			}
-
-			for _, fileHeaders := range requestWrapper.Message.MultipartForm.File {
-				for _, fileHeader := range fileHeaders {
-
-					objectId := bson.NewObjectId()
-					now := time.Now()
-
-					file, _ := fileHeader.Open()
-
-					// unescaping first because the name is escaped in a bad way.
-					fileName, _ := url.QueryUnescape(fileHeader.Filename)
-					fileName = strings.Replace(fileName, "/", "", -1)
-					fileName = strings.Replace(fileName, " ", "", -1)
-					fileName = strings.Replace(fileName, ":", "", -1)
-					fileName = url.QueryEscape(fileName)
-					fileName = objectId.Hex() + "-" + fileName
-					gridFile, mongoErr := MongoDB.GridFS("fs").Create(fileName)
-					if mongoErr != nil {
-						err = &utils.Error{http.StatusInternalServerError, "Creating file failed."}
-						return
-					}
-
-					gridFile.SetId(fileName)
-					gridFile.SetUploadDate(now)
-					gridFile.SetName(fileHeader.Filename)
-					if writeErr := writeToGridFile(file, gridFile); writeErr != nil {
-						err = &utils.Error{http.StatusInternalServerError, "Writing file failed."}
-						return
-					}
-
-					response = make(map[string]interface{})
-					response["_id"] = fileName
-					response["createdAt"] = int32(now.Unix())
-					hookBody = response
-					return
-				}
-			}
+		dec := base64.NewDecoder(base64.StdEncoding, requestWrapper.Message.ReqBodyRaw)
+		_, copyErr := io.Copy(gridFile, dec)
+		if copyErr != nil {
+			fmt.Println(copyErr)
+			err = &utils.Error{http.StatusInternalServerError, "Writing file failed."}
+			return
 		}
 
+		closeErr := gridFile.Close()
+		if closeErr != nil {
+			fmt.Println(closeErr)
+			err = &utils.Error{http.StatusInternalServerError, "Closing file failed."}
+			return
+		}
+
+		response = make(map[string]interface{})
+		response["_id"] = fileName
+		response["createdAt"] = int32(now.Unix())
+		hookBody = response
+		return
+
 	} else {
+
+		connection := sessionCopy.DB(Database).C(collection)
 
 		message := requestWrapper.Message
 
@@ -173,7 +141,7 @@ var HandlePost = func(m *MongoAdapter, requestWrapper messages.RequestWrapper) (
 		message.Body["createdAt"] = createdAt
 		message.Body["updatedAt"] = createdAt
 
-		insertError := m.Collection.Insert(message.Body)
+		insertError := connection.Insert(message.Body)
 		if insertError != nil {
 			err = &utils.Error{http.StatusInternalServerError, "Inserting item to database failed."};
 			return

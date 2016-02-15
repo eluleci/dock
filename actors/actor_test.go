@@ -487,7 +487,7 @@ func TestHandlePost(t *testing.T) {
 		actor.actorType = ActorTypeCollection
 
 		var called bool
-		adapters.HandlePost = func(m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
+		adapters.HandlePost = func(collection string, m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
 			called = true
 			return
 		}

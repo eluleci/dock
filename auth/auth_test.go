@@ -140,7 +140,7 @@ func TestHandleSignUp(t *testing.T) {
 			return
 		}
 
-		adapters.HandlePost = func(m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
+		adapters.HandlePost = func(collection string, m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
 			response = make(map[string]interface{})
 			response["_id"] = "564f1a28e63bce219e1cc745"
 			return
@@ -167,7 +167,7 @@ func TestHandleSignUp(t *testing.T) {
 			return
 		}
 
-		adapters.HandlePost = func(m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
+		adapters.HandlePost = func(collection string, m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
 			response = make(map[string]interface{})
 			response["_id"] = "564f1a28e63bce219e1cc745"
 			return
@@ -194,7 +194,7 @@ func TestHandleSignUp(t *testing.T) {
 			return
 		}
 
-		adapters.HandlePost = func(m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
+		adapters.HandlePost = func(collection string, m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
 			response = make(map[string]interface{})
 			response["_id"] = "564f1a28e63bce219e1cc745"
 			return
@@ -224,7 +224,7 @@ func TestHandleSignUp(t *testing.T) {
 			return
 		}
 
-		adapters.HandlePost = func(m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
+		adapters.HandlePost = func(collection string, m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
 			response = make(map[string]interface{})
 			response["_id"] = "564f1a28e63bce219e1cc745"
 			return

@@ -270,7 +270,7 @@ var handlePost = func(a *Actor, requestWrapper messages.RequestWrapper, user int
 	} else if strings.EqualFold(a.res, ResourceTypeUsers) {                        // post on users not allowed
 		response.Status = http.StatusMethodNotAllowed
 	} else if strings.EqualFold(a.actorType, ActorTypeCollection) {                // create object request
-		response.Body, hookBody, err = adapters.HandlePost(a.adapter, requestWrapper)
+		response.Body, hookBody, err = adapters.HandlePost(a.class ,a.adapter, requestWrapper)
 		if err == nil {response.Status = http.StatusCreated}
 	} else if strings.EqualFold(a.actorType, ActorTypeModel) {                    // post on objects are not allowed
 		response.Status = http.StatusBadRequest
