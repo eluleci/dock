@@ -175,6 +175,11 @@ var HandleGetById = func(collection string, id string) (response map[string]inte
 
 var GetFile = func(id string) (response []byte, err *utils.Error) {
 
+	// HandleGetById(collection, id) (response, hookBody, error)
+
+	sessionCopy := Session.Copy()
+	defer sessionCopy.Close()
+
 	file, mongoErr := MongoDB.GridFS("fs").OpenId(id)
 	if mongoErr != nil {
 		fmt.Println(mongoErr)

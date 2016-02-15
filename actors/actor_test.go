@@ -173,12 +173,12 @@ func TestHandleRequest(t *testing.T) {
 		return
 	}
 
-	isGrantedFuncThatReturnsTrue := func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (isGranted bool, user map[string]interface{}, err *utils.Error) {
+	isGrantedFuncThatReturnsTrue := func(collection string, requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (isGranted bool, user map[string]interface{}, err *utils.Error) {
 		isGranted = true
 		return
 	}
 
-	isGrantedFuncThatReturnsFalse := func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (isGranted bool, user map[string]interface{}, err *utils.Error) {
+	isGrantedFuncThatReturnsFalse := func(collection string, requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (isGranted bool, user map[string]interface{}, err *utils.Error) {
 		isGranted = false
 		return
 	}
@@ -187,7 +187,7 @@ func TestHandleRequest(t *testing.T) {
 	Convey("Should call auth.GetPermissions", t, func() {
 
 		var called bool
-		auth.IsGranted = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (isGranted bool, user map[string]interface{}, err *utils.Error) {
+		auth.IsGranted = func(collection string, requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (isGranted bool, user map[string]interface{}, err *utils.Error) {
 			called = true
 			return
 		}
@@ -200,7 +200,7 @@ func TestHandleRequest(t *testing.T) {
 
 	Convey("Should return permission error", t, func() {
 
-		auth.IsGranted = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (isGranted bool, user map[string]interface{}, err *utils.Error) {
+		auth.IsGranted = func(collection string, requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (isGranted bool, user map[string]interface{}, err *utils.Error) {
 			err = &utils.Error{http.StatusInternalServerError, ""}
 			return
 		}
@@ -420,7 +420,7 @@ func TestHandleGet(t *testing.T) {
 	Convey("Should call adapters.HandleGetById", t, func() {
 
 		var called bool
-		adapters.HandleGetById = func(m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
+		adapters.HandleGetById = func(collection string, id string) (response map[string]interface{}, err *utils.Error) {
 			called = true
 			return
 		}
