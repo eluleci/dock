@@ -159,7 +159,6 @@ var HandleGetById = func(collection string, id string) (response map[string]inte
 
 	sessionCopy := Session.Copy()
 	defer sessionCopy.Close()
-
 	connection := sessionCopy.DB(Database).C(collection)
 
 	response = make(map[string]interface{})
@@ -175,14 +174,11 @@ var HandleGetById = func(collection string, id string) (response map[string]inte
 
 var GetFile = func(id string) (response []byte, err *utils.Error) {
 
-	// HandleGetById(collection, id) (response, hookBody, error)
-
 	sessionCopy := Session.Copy()
 	defer sessionCopy.Close()
 
-	file, mongoErr := MongoDB.GridFS("fs").OpenId(id)
+	file, mongoErr := sessionCopy.DB(Database).GridFS("fs").OpenId(id)
 	if mongoErr != nil {
-		fmt.Println(mongoErr)
 		err = &utils.Error{http.StatusNotFound, "File not found."};
 		return
 	}
@@ -190,7 +186,6 @@ var GetFile = func(id string) (response []byte, err *utils.Error) {
 	response = make([]byte, file.Size())
 	_, printErr := file.Read(response)
 	if printErr != nil {
-		fmt.Println(printErr)
 		err = &utils.Error{http.StatusInternalServerError, "Printing file failed."};
 	}
 	return

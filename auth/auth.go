@@ -469,7 +469,7 @@ var IsGranted = func(collection string, requestWrapper messages.RequestWrapper, 
 	}
 
 	res := requestWrapper.Res
-	if strings.EqualFold(res, ResourceLogin) || strings.EqualFold(res, ResourceRegister) {
+	if strings.EqualFold(res, ResourceLogin) || strings.EqualFold(res, ResourceRegister) || strings.Index(res, ResourceTypeFiles) == 0 {
 		isGranted = true
 		return
 	}
