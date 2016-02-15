@@ -453,7 +453,7 @@ var sendNewPasswordEmail = func(smtpServer, smtpPost, senderEmail, senderEmailPa
 	return
 }
 
-var IsGranted = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (isGranted bool, user map[string]interface{}, err *utils.Error) {
+var IsGranted = func(collection string, requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (isGranted bool, user map[string]interface{}, err *utils.Error) {
 
 	var permissions map[string]bool
 
@@ -482,7 +482,8 @@ var IsGranted = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters
 	if strings.Count(requestWrapper.Res, "/") == 1 {
 		permissions, err = getPermissionsOnResources(roles, requestWrapper)
 	} else if strings.Count(requestWrapper.Res, "/") == 2 {
-		permissions, err = getPermissionsOnObject(roles, requestWrapper, dbAdapter)
+		id := requestWrapper.Res[strings.LastIndex(requestWrapper.Res, "/") + 1:]
+		permissions, err = getPermissionsOnObject(collection, id, roles)
 	} else {
 		// TODO handle this resources
 		//		fmt.Println("ERROR: auth.go.GetPermissions(): Count of the / is more than 2: " + requestWrapper.Res)
@@ -500,7 +501,6 @@ var IsGranted = func(requestWrapper messages.RequestWrapper, dbAdapter *adapters
 }
 
 func getUser(requestWrapper messages.RequestWrapper) (user map[string]interface{}, err *utils.Error) {
-	dbAdapter := &adapters.MongoAdapter{adapters.MongoDB.C("users")}
 
 	var userDataFromToken map[string]interface{}
 	userDataFromToken, err = extractUserFromRequest(requestWrapper)
@@ -511,13 +511,7 @@ func getUser(requestWrapper messages.RequestWrapper) (user map[string]interface{
 
 	if userDataFromToken != nil {
 		userId := userDataFromToken["userId"].(string)
-
-		var rw messages.RequestWrapper
-		var m messages.Message
-		m.Res = "/users/" + userId
-		rw.Message = m
-
-		user, err = adapters.HandleGetById(dbAdapter, rw)
+		user, err = adapters.HandleGetById(ClassUsers, userId)
 		if err != nil {
 			return
 		}
@@ -551,15 +545,15 @@ func extractUserFromRequest(requestWrapper messages.RequestWrapper) (user map[st
 	return
 }
 
-func getPermissionsOnObject(roles []string, requestWrapper messages.RequestWrapper, dbAdapter *adapters.MongoAdapter) (permissions map[string]bool, err *utils.Error) {
+func getPermissionsOnObject(collection string, id string, roles []string) (permissions map[string]bool, err *utils.Error) {
 
-	var userData map[string]interface{}
-	userData, err = adapters.HandleGetById(dbAdapter, requestWrapper)
+	var model map[string]interface{}
+	model, err = adapters.HandleGetById(collection, id)
 	if err != nil {
 		return
 	}
 
-	acl := userData["_acl"]
+	acl := model["_acl"]
 	if acl != nil {
 		permissions = make(map[string]bool)
 

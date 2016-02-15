@@ -148,7 +148,7 @@ var handleRequest = func(a *Actor, requestWrapper messages.RequestWrapper) (resp
 
 	//	isActorTypeFunctions := strings.EqualFold(a.actorType, ActorTypeFunctions)
 
-	isGranted, user, err = auth.IsGranted(requestWrapper, a.adapter)
+	isGranted, user, err = auth.IsGranted(a.class, requestWrapper, a.adapter)
 
 	if isGranted && err == nil {
 		response, err = executeTrigger(a, user, requestWrapper, "before")
@@ -231,7 +231,7 @@ var handleGet = func(a *Actor, requestWrapper messages.RequestWrapper) (response
 		if isFileClass {    // get file by id
 			response.RawBody, err = adapters.GetFile(id)
 		} else {            // get object by id
-			response.Body, err = adapters.HandleGetById(a.adapter, requestWrapper)
+			response.Body, err = adapters.HandleGetById(a.class, id)
 		}
 	} else if isCollectionTypeActor {                    // query objects
 		response.Body, err = adapters.HandleGet(a.adapter, requestWrapper)

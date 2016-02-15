@@ -86,9 +86,6 @@ var HandlePost = func(collection string, m *MongoAdapter, requestWrapper message
 
 	sessionCopy := Session.Copy()
 	defer sessionCopy.Close()
-	defer func() {
-		fmt.Println("deferred")
-	}()
 
 	if strings.EqualFold("/files", requestWrapper.Res) {
 
@@ -156,23 +153,22 @@ var HandlePost = func(collection string, m *MongoAdapter, requestWrapper message
 	return
 }
 
-var HandleGetById = func(m *MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
+var HandleGetById = func(collection string, id string) (response map[string]interface{}, err *utils.Error) {
 
-	if strings.Contains(requestWrapper.Res, "/files") {
+	// HandleGetById(collection, id) (response, hookBody, error)
 
+	sessionCopy := Session.Copy()
+	defer sessionCopy.Close()
 
+	connection := sessionCopy.DB(Database).C(collection)
 
-	} else {
-		message := requestWrapper.Message
-		id := message.Res[strings.LastIndex(message.Res, "/") + 1:]
-		response = make(map[string]interface{})
+	response = make(map[string]interface{})
 
-		getErr := m.Collection.FindId(id).One(&response)
-		if getErr != nil {
-			err = &utils.Error{http.StatusNotFound, "Item not found."};
-			response = nil
-			return
-		}
+	getErr := connection.FindId(id).One(&response)
+	if getErr != nil {
+		err = &utils.Error{http.StatusNotFound, "Item not found."};
+		response = nil
+		return
 	}
 	return
 }

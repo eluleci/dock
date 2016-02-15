@@ -3,7 +3,6 @@ package modifier
 import (
 	"strings"
 	"github.com/eluleci/dock/adapters"
-	"github.com/eluleci/dock/messages"
 	"github.com/eluleci/dock/utils"
 	"reflect"
 	"gopkg.in/mgo.v2/bson"
@@ -142,14 +141,8 @@ var fetchData = func(data map[string]interface{}) (object map[string]interface{}
 		id = data["_id"].(bson.ObjectId).Hex()
 	}
 	className := data["_class"].(string)
-	dbAdapter := &adapters.MongoAdapter{adapters.MongoDB.C(className)}
 
-	var rw messages.RequestWrapper
-	var m messages.Message
-	m.Res = "/" + className + "/" + id
-	rw.Message = m
-
-	object, err = adapters.HandleGetById(dbAdapter, rw)
+	object, err = adapters.HandleGetById(className, id)
 	if err != nil {
 		return
 	}
