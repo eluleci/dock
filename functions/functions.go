@@ -1,4 +1,5 @@
 package functions
+
 import (
 	"github.com/eluleci/dock/config"
 	"github.com/eluleci/dock/utils"

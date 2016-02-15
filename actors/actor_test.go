@@ -417,10 +417,10 @@ func TestHandleGet(t *testing.T) {
 	})
 
 	resetFunctions()
-	Convey("Should call adapters.HandleGetById", t, func() {
+	Convey("Should call adapters.Get", t, func() {
 
 		var called bool
-		adapters.HandleGetById = func(collection string, id string) (response map[string]interface{}, err *utils.Error) {
+		adapters.Get = func(collection string, id string) (response map[string]interface{}, err *utils.Error) {
 			called = true
 			return
 		}
@@ -434,10 +434,10 @@ func TestHandleGet(t *testing.T) {
 	})
 
 	resetFunctions()
-	Convey("Should call adapters.HandleGet", t, func() {
+	Convey("Should call adapters.Query", t, func() {
 
 		var called bool
-		adapters.HandleGet = func(collection string, parameters map[string][]string) (response map[string]interface{}, err *utils.Error) {
+		adapters.Query = func(collection string, parameters map[string][]string) (response map[string]interface{}, err *utils.Error) {
 			called = true
 			return
 		}
@@ -487,7 +487,7 @@ func TestHandlePost(t *testing.T) {
 		actor.actorType = ActorTypeCollection
 
 		var called bool
-		adapters.HandlePost = func(collection string, m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
+		adapters.Create = func(collection string, data map[string]interface{}) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
 			called = true
 			return
 		}
@@ -529,7 +529,7 @@ func TestHandlePut(t *testing.T) {
 		actor.actorType = ActorTypeModel
 
 		var called bool
-		adapters.HandlePut = func(collection string, id string, data map[string]interface{}) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
+		adapters.Update = func(collection string, id string, data map[string]interface{}) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
 			called = true
 			return
 		}
@@ -558,7 +558,7 @@ func TestHandleDelete(t *testing.T) {
 		actor.actorType = ActorTypeModel
 
 		var called bool
-		adapters.HandleDelete = func(m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
+		adapters.Delete = func(collection string, id string) (response map[string]interface{}, err *utils.Error) {
 			called = true
 			return
 		}

@@ -1,20 +1,20 @@
 package auth
 
 import (
-	"github.com/eluleci/dock/messages"
+	"fmt"
+	"time"
+	"strings"
 	"net/http"
+	"net/smtp"
+	"io/ioutil"
+	"math/rand"
+	"encoding/json"
+	"github.com/eluleci/dock/messages"
 	"golang.org/x/crypto/bcrypt"
 	"github.com/eluleci/dock/adapters"
-	"encoding/json"
-	"time"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/eluleci/dock/utils"
-	"strings"
-	"io/ioutil"
 	"github.com/eluleci/dock/config"
-	"math/rand"
-	"net/smtp"
-	"fmt"
 )
 
 const (
@@ -128,7 +128,7 @@ var createLocalAccount = func(requestWrapper messages.RequestWrapper, dbAdapter 
 	}
 	requestWrapper.Message.Body["password"] = string(hashedPassword)
 
-	response, hookBody, err = adapters.HandlePost(ClassUsers ,dbAdapter, requestWrapper)
+	response, hookBody, err = adapters.Create(ClassUsers, requestWrapper.Message.Body)
 	return
 }
 
@@ -208,7 +208,7 @@ var handleFacebookAuth = func(requestWrapper messages.RequestWrapper, dbAdapter 
 	existingAccount, _ := getAccountData(requestWrapper, dbAdapter)
 
 	if existingAccount == nil {
-		response, hookBody, err = adapters.HandlePost(ClassUsers, dbAdapter, requestWrapper)
+		response, hookBody, err = adapters.Create(ClassUsers,requestWrapper.Message.Body)
 		response["isNewUser"] = true
 	} else {
 		response = existingAccount
@@ -274,7 +274,7 @@ var handleGoogleAuth = func(requestWrapper messages.RequestWrapper, dbAdapter *a
 	existingAccount, _ := getAccountData(requestWrapper, dbAdapter)
 
 	if existingAccount == nil {
-		response, hookBody, err = adapters.HandlePost(ClassUsers, dbAdapter, requestWrapper)
+		response, hookBody, err = adapters.Create(ClassUsers, requestWrapper.Message.Body)
 		response["isNewUser"] = true
 	} else {
 		response = existingAccount
@@ -358,7 +358,7 @@ var HandleChangePassword = func(requestWrapper messages.RequestWrapper, dbAdapte
 	}
 
 	body := map[string]interface{}{"password": string(hashedPassword)}
-	response.Body, _, err = adapters.HandlePut(ClassUsers, userAsMap["_id"].(string), body)
+	response.Body, _, err = adapters.Update(ClassUsers, userAsMap["_id"].(string), body)
 	if err != nil {
 		return
 	}
@@ -407,7 +407,7 @@ var HandleResetPassword = func(requestWrapper messages.RequestWrapper, dbAdapter
 	}
 
 	body := map[string]interface{}{"password": string(hashedPassword)}
-	response.Body, _, err = adapters.HandlePut(ClassUsers, accountData["_id"].(string), body)
+	response.Body, _, err = adapters.Update(ClassUsers, accountData["_id"].(string), body)
 	if err != nil {
 		return
 	}
@@ -495,7 +495,7 @@ func getUser(requestWrapper messages.RequestWrapper) (user map[string]interface{
 
 	if userDataFromToken != nil {
 		userId := userDataFromToken["userId"].(string)
-		user, err = adapters.HandleGetById(ClassUsers, userId)
+		user, err = adapters.Get(ClassUsers, userId)
 		if err != nil {
 			return
 		}
@@ -532,7 +532,7 @@ func extractUserFromRequest(requestWrapper messages.RequestWrapper) (user map[st
 func getPermissionsOnObject(collection string, id string, roles []string) (permissions map[string]bool, err *utils.Error) {
 
 	var model map[string]interface{}
-	model, err = adapters.HandleGetById(collection, id)
+	model, err = adapters.Get(collection, id)
 	if err != nil {
 		return
 	}
@@ -622,7 +622,7 @@ var getAccountData = func(requestWrapper messages.RequestWrapper, dbAdapter *ada
 	}
 	requestWrapper.Message.Parameters["where"] = []string{string(whereParamsJson)}
 
-	results, fetchErr := adapters.HandleGet(ClassUsers, requestWrapper.Message.Parameters)
+	results, fetchErr := adapters.Query(ClassUsers, requestWrapper.Message.Parameters)
 	resultsAsMap := results["data"].([]map[string]interface{})
 	if fetchErr != nil || len(resultsAsMap) == 0 {
 		err = &utils.Error{http.StatusNotFound, "Account not found."}

@@ -140,7 +140,7 @@ func TestHandleSignUp(t *testing.T) {
 			return
 		}
 
-		adapters.HandlePost = func(collection string, m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
+		adapters.Create = func(collection string, data map[string]interface{}) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
 			response = make(map[string]interface{})
 			response["_id"] = "564f1a28e63bce219e1cc745"
 			return
@@ -167,7 +167,7 @@ func TestHandleSignUp(t *testing.T) {
 			return
 		}
 
-		adapters.HandlePost = func(collection string, m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
+		adapters.Create = func(collection string, data map[string]interface{}) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
 			response = make(map[string]interface{})
 			response["_id"] = "564f1a28e63bce219e1cc745"
 			return
@@ -194,7 +194,7 @@ func TestHandleSignUp(t *testing.T) {
 			return
 		}
 
-		adapters.HandlePost = func(collection string, m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
+		adapters.Create = func(collection string, data map[string]interface{}) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
 			response = make(map[string]interface{})
 			response["_id"] = "564f1a28e63bce219e1cc745"
 			return
@@ -224,7 +224,7 @@ func TestHandleSignUp(t *testing.T) {
 			return
 		}
 
-		adapters.HandlePost = func(collection string, m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
+		adapters.Create = func(collection string, data map[string]interface{}) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
 			response = make(map[string]interface{})
 			response["_id"] = "564f1a28e63bce219e1cc745"
 			return
@@ -853,7 +853,7 @@ func TestResetPassword(t *testing.T) {
 			return
 		}
 
-		adapters.HandlePut = func(collection string, id string, data map[string]interface{}) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
+		adapters.Update = func(collection string, id string, data map[string]interface{}) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
 			err = &utils.Error{http.StatusInternalServerError, "Some error happened."}
 			return
 		}
@@ -880,7 +880,7 @@ func TestResetPassword(t *testing.T) {
 
 		var isResCorrect bool
 		var isPasswordProvided bool
-		adapters.HandlePut = func(collection string, id string, data map[string]interface{}) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
+		adapters.Update = func(collection string, id string, data map[string]interface{}) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
 			isResCorrect = strings.EqualFold("users", collection) && strings.EqualFold("564f1a28e63bce219e1cc745", id)
 			isPasswordProvided = len(data["password"].(string)) > 0
 			return

@@ -2,11 +2,11 @@ package modifier
 
 import (
 	"strings"
-	"github.com/eluleci/dock/adapters"
-	"github.com/eluleci/dock/utils"
 	"reflect"
-	"gopkg.in/mgo.v2/bson"
 	"net/http"
+	"gopkg.in/mgo.v2/bson"
+	"github.com/eluleci/dock/utils"
+	"github.com/eluleci/dock/adapters"
 )
 
 var ExpandArray = func(data map[string]interface{}, config string) (result map[string]interface{}, err *utils.Error) {
@@ -142,7 +142,7 @@ var fetchData = func(data map[string]interface{}) (object map[string]interface{}
 	}
 	className := data["_class"].(string)
 
-	object, err = adapters.HandleGetById(className, id)
+	object, err = adapters.Get(className, id)
 	if err != nil {
 		return
 	}

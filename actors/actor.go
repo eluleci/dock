@@ -1,13 +1,13 @@
 package actors
 
 import (
+	"strings"
+	"net/http"
+	"encoding/json"
 	"github.com/eluleci/dock/utils"
 	"github.com/eluleci/dock/messages"
 	"github.com/eluleci/dock/adapters"
 	"github.com/eluleci/dock/auth"
-	"encoding/json"
-	"strings"
-	"net/http"
 	"github.com/eluleci/dock/modifier"
 	"github.com/eluleci/dock/hooks"
 )
@@ -231,10 +231,10 @@ var handleGet = func(a *Actor, requestWrapper messages.RequestWrapper) (response
 		if isFileClass {    // get file by id
 			response.RawBody, err = adapters.GetFile(id)
 		} else {            // get object by id
-			response.Body, err = adapters.HandleGetById(a.class, id)
+			response.Body, err = adapters.Get(a.class, id)
 		}
 	} else if isCollectionTypeActor {                    // query objects
-		response.Body, err = adapters.HandleGet(a.class, requestWrapper.Message.Parameters)
+		response.Body, err = adapters.Query(a.class, requestWrapper.Message.Parameters)
 	}
 
 	if err != nil {
@@ -270,7 +270,12 @@ var handlePost = func(a *Actor, requestWrapper messages.RequestWrapper, user int
 	} else if strings.EqualFold(a.res, ResourceTypeUsers) {                        // post on users not allowed
 		response.Status = http.StatusMethodNotAllowed
 	} else if strings.EqualFold(a.actorType, ActorTypeCollection) {                // create object request
-		response.Body, hookBody, err = adapters.HandlePost(a.class ,a.adapter, requestWrapper)
+		if(!strings.EqualFold(a.class, ClassFiles)) {
+			response.Body, hookBody, err = adapters.Create(a.class, requestWrapper.Message.Body)
+		} else {
+			response.Body, hookBody, err = adapters.CreateFile(requestWrapper.Message.ReqBodyRaw)
+		}
+
 		if err == nil {response.Status = http.StatusCreated}
 	} else if strings.EqualFold(a.actorType, ActorTypeModel) {                    // post on objects are not allowed
 		response.Status = http.StatusBadRequest
@@ -284,7 +289,7 @@ var handlePut = func(a *Actor, requestWrapper messages.RequestWrapper) (response
 		response.Status = http.StatusBadRequest
 	} else if strings.EqualFold(a.actorType, ActorTypeModel) {        // update object
 		id := requestWrapper.Message.Res[strings.LastIndex(requestWrapper.Message.Res, "/") + 1:]
-		response.Body, hookBody, err = adapters.HandlePut(a.class, id, requestWrapper.Message.Body)
+		response.Body, hookBody, err = adapters.Update(a.class, id, requestWrapper.Message.Body)
 	}
 	return
 }
@@ -295,7 +300,7 @@ var handleDelete = func(a *Actor, requestWrapper messages.RequestWrapper) (respo
 		response.Status = http.StatusBadRequest
 	} else if strings.EqualFold(a.actorType, ActorTypeModel) {        // delete object
 		id := requestWrapper.Message.Res[strings.LastIndex(requestWrapper.Message.Res, "/") + 1:]
-		response.Body, err = adapters.HandleDelete(a.class, id)
+		response.Body, err = adapters.Delete(a.class, id)
 		if err == nil {
 			response.Status = http.StatusNoContent
 		}

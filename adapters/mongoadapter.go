@@ -1,22 +1,17 @@
 package adapters
 
 import (
-	"github.com/eluleci/dock/messages"
-	"github.com/eluleci/dock/utils"
+	"io"
+	"fmt"
+	"time"
+	"reflect"
+	"net/http"
+	"encoding/json"
+	"encoding/base64"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
-	"encoding/json"
-	"time"
-	"strings"
-	"net/http"
-	"fmt"
-	"reflect"
 	"github.com/eluleci/dock/config"
-	"bufio"
-	"mime/multipart"
-	"io"
-	"errors"
-	"encoding/base64"
+	"github.com/eluleci/dock/utils"
 )
 
 type MongoAdapter struct {
@@ -80,82 +75,37 @@ var Connect = func(config config.Config) (err *utils.Error) {
 
 }
 
-var HandlePost = func(collection string, m *MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
-
-	// HandlePost(collection, data) (response, hookBody, error)
+var Create = func(collection string, data map[string]interface{}) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
 
 	sessionCopy := Session.Copy()
 	defer sessionCopy.Close()
+	connection := sessionCopy.DB(Database).C(collection)
 
-	if strings.EqualFold("/files", requestWrapper.Res) {
+	// generate id and createdAt time
+	id := bson.NewObjectId()
+	createdAt := int32(time.Now().Unix())
 
-		objectId := bson.NewObjectId()
-		now := time.Now()
-		fileName := objectId.Hex()
+	// additional fields
+	data["_id"] = id.Hex()
+	data["createdAt"] = createdAt
+	data["updatedAt"] = createdAt
 
-		gridFile, mongoErr := MongoDB.GridFS("fs").Create(fileName)
-		if mongoErr != nil {
-			fmt.Println(mongoErr)
-			err = &utils.Error{http.StatusInternalServerError, "Creating file failed."}
-			return
-		}
-		gridFile.SetId(fileName)
-		gridFile.SetName(fileName)
-		gridFile.SetUploadDate(now)
-
-		dec := base64.NewDecoder(base64.StdEncoding, requestWrapper.Message.ReqBodyRaw)
-		_, copyErr := io.Copy(gridFile, dec)
-		if copyErr != nil {
-			fmt.Println(copyErr)
-			err = &utils.Error{http.StatusInternalServerError, "Writing file failed."}
-			return
-		}
-
-		closeErr := gridFile.Close()
-		if closeErr != nil {
-			fmt.Println(closeErr)
-			err = &utils.Error{http.StatusInternalServerError, "Closing file failed."}
-			return
-		}
-
-		response = make(map[string]interface{})
-		response["_id"] = fileName
-		response["createdAt"] = int32(now.Unix())
-		hookBody = response
+	insertError := connection.Insert(data)
+	if insertError != nil {
+		err = &utils.Error{http.StatusInternalServerError, "Inserting item to database failed."};
 		return
-
-	} else {
-
-		connection := sessionCopy.DB(Database).C(collection)
-
-		message := requestWrapper.Message
-
-		objectId := bson.NewObjectId()
-		createdAt := int32(time.Now().Unix())
-
-		// additional fields
-		message.Body["_id"] = objectId.Hex()
-		message.Body["createdAt"] = createdAt
-		message.Body["updatedAt"] = createdAt
-
-		insertError := connection.Insert(message.Body)
-		if insertError != nil {
-			err = &utils.Error{http.StatusInternalServerError, "Inserting item to database failed."};
-			return
-		}
-
-		response = make(map[string]interface{})
-		response["_id"] = objectId.Hex()
-		response["createdAt"] = createdAt
-		hookBody = message.Body
 	}
+
+	response = map[string]interface{}{
+		"_id": id.Hex(),
+		"createdAt": createdAt,
+	}
+	hookBody = data
 
 	return
 }
 
-var HandleGetById = func(collection string, id string) (response map[string]interface{}, err *utils.Error) {
-
-	// HandleGetById(collection, id) (response, hookBody, error)
+var Get = func(collection string, id string) (response map[string]interface{}, err *utils.Error) {
 
 	sessionCopy := Session.Copy()
 	defer sessionCopy.Close()
@@ -172,28 +122,7 @@ var HandleGetById = func(collection string, id string) (response map[string]inte
 	return
 }
 
-var GetFile = func(id string) (response []byte, err *utils.Error) {
-
-	sessionCopy := Session.Copy()
-	defer sessionCopy.Close()
-
-	file, mongoErr := sessionCopy.DB(Database).GridFS("fs").OpenId(id)
-	if mongoErr != nil {
-		err = &utils.Error{http.StatusNotFound, "File not found."};
-		return
-	}
-
-	response = make([]byte, file.Size())
-	_, printErr := file.Read(response)
-	if printErr != nil {
-		err = &utils.Error{http.StatusInternalServerError, "Printing file failed."};
-	}
-	return
-}
-
-var HandleGet = func(collection string, parameters map[string][]string) (response map[string]interface{}, err *utils.Error) {
-
-	// HandleGet(collection, params) (response, error)
+var Query = func(collection string, parameters map[string][]string) (response map[string]interface{}, err *utils.Error) {
 
 	sessionCopy := Session.Copy()
 	defer sessionCopy.Close()
@@ -251,7 +180,7 @@ var HandleGet = func(collection string, parameters map[string][]string) (respons
 	return
 }
 
-var HandlePut = func(collection string, id string, data map[string]interface{}) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
+var Update = func(collection string, id string, data map[string]interface{}) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
 
 	sessionCopy := Session.Copy()
 	defer sessionCopy.Close()
@@ -297,7 +226,7 @@ var HandlePut = func(collection string, id string, data map[string]interface{}) 
 	return
 }
 
-var HandleDelete = func(collection string, id string) (response map[string]interface{}, err *utils.Error) {
+var Delete = func(collection string, id string) (response map[string]interface{}, err *utils.Error) {
 
 	sessionCopy := Session.Copy()
 	defer sessionCopy.Close()
@@ -306,6 +235,68 @@ var HandleDelete = func(collection string, id string) (response map[string]inter
 	removeErr := connection.RemoveId(id)
 	if removeErr != nil {
 		err = &utils.Error{http.StatusNotFound, "Item not found."};
+	}
+	return
+}
+
+var CreateFile = func(data io.ReadCloser) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
+
+	sessionCopy := Session.Copy()
+	defer sessionCopy.Close()
+
+	objectId := bson.NewObjectId()
+	now := time.Now()
+	fileName := objectId.Hex()
+
+	gridFile, mongoErr := sessionCopy.DB(Database).GridFS("fs").Create(fileName)
+	if mongoErr != nil {
+		fmt.Println(mongoErr)
+		err = &utils.Error{http.StatusInternalServerError, "Creating file failed."}
+		return
+	}
+	gridFile.SetId(fileName)
+	gridFile.SetName(fileName)
+	gridFile.SetUploadDate(now)
+
+	dec := base64.NewDecoder(base64.StdEncoding, data)
+	_, copyErr := io.Copy(gridFile, dec)
+	if copyErr != nil {
+		fmt.Println(copyErr)
+		err = &utils.Error{http.StatusInternalServerError, "Writing file failed."}
+		return
+	}
+
+	closeErr := gridFile.Close()
+	if closeErr != nil {
+		fmt.Println(closeErr)
+		err = &utils.Error{http.StatusInternalServerError, "Closing file failed."}
+		return
+	}
+
+	response = make(map[string]interface{})
+	response["_id"] = fileName
+	response["createdAt"] = int32(now.Unix())
+	hookBody = response
+	return
+
+	return
+}
+
+var GetFile = func(id string) (response []byte, err *utils.Error) {
+
+	sessionCopy := Session.Copy()
+	defer sessionCopy.Close()
+
+	file, mongoErr := sessionCopy.DB(Database).GridFS("fs").OpenId(id)
+	if mongoErr != nil {
+		err = &utils.Error{http.StatusNotFound, "File not found."};
+		return
+	}
+
+	response = make([]byte, file.Size())
+	_, printErr := file.Read(response)
+	if printErr != nil {
+		err = &utils.Error{http.StatusInternalServerError, "Printing file failed."};
 	}
 	return
 }
@@ -375,50 +366,4 @@ var extractIntParameter = func(parameters map[string][]string, key string) (valu
 		value = int(paramValue.(float64))
 	}
 	return
-}
-
-var writeToGridFile = func(file multipart.File, gridFile *mgo.GridFile) error {
-	reader := bufio.NewReader(file)
-	defer func() { file.Close() }()
-	// make a buffer to keep chunks that are read
-	buf := make([]byte, 1024)
-	for {
-		// read a chunk
-		n, err := reader.Read(buf)
-		if err != nil && err != io.EOF {
-			return errors.New("Could not read the input file")
-		}
-		if n == 0 {
-			break
-		}
-		// write a chunk
-		if _, err := gridFile.Write(buf[:n]); err != nil {
-			return errors.New("Could not write to GridFs for " + gridFile.Name())
-		}
-	}
-	gridFile.Close()
-	return nil
-}
-
-var writeBodyToGridFile = func(body io.ReadCloser, gridFile *mgo.GridFile) error {
-	reader := bufio.NewReader(body)
-	defer func() { body.Close() }()
-	// make a buffer to keep chunks that are read
-	buf := make([]byte, 1024)
-	for {
-		// read a chunk
-		n, err := reader.Read(buf)
-		if err != nil && err != io.EOF {
-			return errors.New("Could not read the input file")
-		}
-		if n == 0 {
-			break
-		}
-		// write a chunk
-		if _, err := gridFile.Write(buf[:n]); err != nil {
-			return errors.New("Could not write to GridFs for " + gridFile.Name())
-		}
-	}
-	gridFile.Close()
-	return nil
 }

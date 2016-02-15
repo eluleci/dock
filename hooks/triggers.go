@@ -52,7 +52,7 @@ var getFunctionData = func(name string) (function map[string]interface{}, err *u
 	}
 
 	parameters := map[string][]string {"where": []string{string(whereParamsJson)}}
-	results, fetchErr := adapters.HandleGet("functions", parameters)
+	results, fetchErr := adapters.Query("functions", parameters)
 
 	if fetchErr != nil {
 		err = fetchErr
@@ -118,7 +118,7 @@ var getTriggerData = func(className, when, method string) (trigger map[string]in
 	}
 
 	parameters := map[string][]string {"where": []string{string(whereParamsJson)}}
-	results, fetchErr := adapters.HandleGet("triggers", parameters)
+	results, fetchErr := adapters.Query("triggers", parameters)
 
 	if fetchErr != nil {
 		err = fetchErr
