@@ -357,16 +357,8 @@ var HandleChangePassword = func(requestWrapper messages.RequestWrapper, dbAdapte
 		return
 	}
 
-	updatePasswordRW := messages.RequestWrapper{}
-	updatePasswordM := messages.Message{}
-	updatePasswordM.Res = ResourceTypeUsers + "/" + userAsMap["_id"].(string)
-	updatePasswordM.Body = map[string]interface{}{
-		"password": string(hashedPassword),
-	}
-	updatePasswordRW.Message = updatePasswordM
-
-	response.Body, _, err = adapters.HandlePut(dbAdapter, updatePasswordRW)
-
+	body := map[string]interface{}{"password": string(hashedPassword)}
+	response.Body, _, err = adapters.HandlePut(ClassUsers, userAsMap["_id"].(string), body)
 	if err != nil {
 		return
 	}
@@ -414,16 +406,8 @@ var HandleResetPassword = func(requestWrapper messages.RequestWrapper, dbAdapter
 		return
 	}
 
-	updatePasswordRW := messages.RequestWrapper{}
-	updatePasswordM := messages.Message{}
-	updatePasswordM.Res = ResourceTypeUsers + "/" + accountData["_id"].(string)
-	updatePasswordM.Body = map[string]interface{}{
-		"password": string(hashedPassword),
-	}
-	updatePasswordRW.Message = updatePasswordM
-
-	response.Body, _, err = adapters.HandlePut(dbAdapter, updatePasswordRW)
-
+	body := map[string]interface{}{"password": string(hashedPassword)}
+	response.Body, _, err = adapters.HandlePut(ClassUsers, accountData["_id"].(string), body)
 	if err != nil {
 		return
 	}

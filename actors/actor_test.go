@@ -529,7 +529,7 @@ func TestHandlePut(t *testing.T) {
 		actor.actorType = ActorTypeModel
 
 		var called bool
-		adapters.HandlePut = func(m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
+		adapters.HandlePut = func(collection string, id string, data map[string]interface{}) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
 			called = true
 			return
 		}

@@ -853,7 +853,7 @@ func TestResetPassword(t *testing.T) {
 			return
 		}
 
-		adapters.HandlePut = func(m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
+		adapters.HandlePut = func(collection string, id string, data map[string]interface{}) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
 			err = &utils.Error{http.StatusInternalServerError, "Some error happened."}
 			return
 		}
@@ -880,9 +880,9 @@ func TestResetPassword(t *testing.T) {
 
 		var isResCorrect bool
 		var isPasswordProvided bool
-		adapters.HandlePut = func(m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
-			isResCorrect = strings.EqualFold("/users/564f1a28e63bce219e1cc745", requestWrapper.Message.Res)
-			isPasswordProvided = len(requestWrapper.Message.Body["password"].(string)) > 0
+		adapters.HandlePut = func(collection string, id string, data map[string]interface{}) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
+			isResCorrect = strings.EqualFold("users", collection) && strings.EqualFold("564f1a28e63bce219e1cc745", id)
+			isPasswordProvided = len(data["password"].(string)) > 0
 			return
 		}
 

@@ -283,7 +283,8 @@ var handlePut = func(a *Actor, requestWrapper messages.RequestWrapper) (response
 	if strings.EqualFold(a.actorType, ActorTypeCollection) {            // put on resources are not allowed
 		response.Status = http.StatusBadRequest
 	} else if strings.EqualFold(a.actorType, ActorTypeModel) {        // update object
-		response.Body, hookBody, err = adapters.HandlePut(a.adapter, requestWrapper)
+		id := requestWrapper.Message.Res[strings.LastIndex(requestWrapper.Message.Res, "/") + 1:]
+		response.Body, hookBody, err = adapters.HandlePut(a.class, id, requestWrapper.Message.Body)
 	}
 	return
 }

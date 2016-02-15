@@ -251,45 +251,47 @@ var HandleGet = func(collection string, parameters map[string][]string) (respons
 	return
 }
 
-var HandlePut = func(m *MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
+var HandlePut = func(collection string, id string, data map[string]interface{}) (response map[string]interface{}, hookBody map[string]interface{}, err *utils.Error) {
 
-	message := requestWrapper.Message
-	if message.Body == nil {
+	sessionCopy := Session.Copy()
+	defer sessionCopy.Close()
+	connection := sessionCopy.DB(Database).C(collection)
+
+	if data == nil {
 		err = &utils.Error{http.StatusBadRequest, "Request body cannot be empty for update requests."}
 		return
 	}
 
-	message.Body["updatedAt"] = int32(time.Now().Unix())
-	id := message.Res[strings.LastIndex(message.Res, "/") + 1:]
+	data["updatedAt"] = int32(time.Now().Unix())
 
 	objectToUpdate := make(map[string]interface{})
-	findErr := m.Collection.FindId(id).One(&objectToUpdate)
+	findErr := connection.FindId(id).One(&objectToUpdate)
 	if findErr != nil {
 		err = &utils.Error{http.StatusNotFound, "Item not found."};
 		return
 	}
 
 	// updating the fields that request body contains
-	for k, v := range message.Body {
+	for k, v := range data {
 		objectToUpdate[k] = v
 	}
 
-	updateErr := m.Collection.UpdateId(id, objectToUpdate)
+	updateErr := connection.UpdateId(id, objectToUpdate)
 	if updateErr != nil {
 		err = &utils.Error{http.StatusInternalServerError, "Update request to db failed."};
 		return
 	}
 
 	response = map[string]interface{}{
-		"updatedAt": message.Body["updatedAt"],
+		"updatedAt": data["updatedAt"],
 	}
 	hookBody = map[string]interface{}{
 		"_id": id,
-		"updatedAt": message.Body["updatedAt"],
+		"updatedAt": data["updatedAt"],
 	}
 
-	// adding the fields (which are updated) to hook request
-	for k, v := range message.Body {
+	// add the updated fields to the hook body
+	for k, v := range data {
 		hookBody[k] = v
 	}
 	return
