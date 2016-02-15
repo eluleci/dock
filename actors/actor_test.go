@@ -437,7 +437,7 @@ func TestHandleGet(t *testing.T) {
 	Convey("Should call adapters.HandleGet", t, func() {
 
 		var called bool
-		adapters.HandleGet = func(m *adapters.MongoAdapter, requestWrapper messages.RequestWrapper) (response map[string]interface{}, err *utils.Error) {
+		adapters.HandleGet = func(collection string, parameters map[string][]string) (response map[string]interface{}, err *utils.Error) {
 			called = true
 			return
 		}
